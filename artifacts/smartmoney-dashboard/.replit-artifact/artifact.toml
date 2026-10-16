@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Solana Smart-Money Tracker"
+description = "The existing Python Flask dashboard for read-only Solana smart-money signals, consensus buys, and historical winner data."
+version = "1.0.0"
+id = "artifacts/smartmoney-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18182
+
+[services.development]
+run = "cd ../../smartmoney-app && python main.py serve"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smartmoney-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smartmoney-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18182"
+BASE_PATH = "/"

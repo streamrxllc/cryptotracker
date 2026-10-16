@@ -9,28 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Solana Wallet Tracker"
-
-[[workflows.workflow]]
-name = "Solana Wallet Tracker"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd smartmoney-app && PORT=8000 python main.py serve"
-waitForPort = 8000
 
 [agent]
 stack = "PNPM_WORKSPACE"
