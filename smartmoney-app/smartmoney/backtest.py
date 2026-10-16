@@ -49,6 +49,33 @@ def copy_returns(trades, n, prices_sol, slip=None):
     return out
 
 
+def timing(trades, n):
+    """For positions with >= n buys: minutes from buy #1 to buy #n, minutes from
+    buy #n to the wallet's first sale after it, and price change buy #1 -> #n."""
+    groups = defaultdict(list)
+    for t in trades:
+        if t["side"] in ("buy", "sell") and t["token_amount"] > 0:
+            groups[(t["wallet"], t["mint"])].append(t)
+    gaps, to_sell, run_up = [], [], []
+    for ts in groups.values():
+        ts.sort(key=lambda t: t["ts"])
+        buys = [t for t in ts if t["side"] == "buy" and (t["quote_sol"] or 0) > 0]
+        if len(buys) < n:
+            continue
+        b1, bn = buys[0], buys[n - 1]
+        gaps.append((bn["ts"] - b1["ts"]) / 60)
+        p1, pn = b1["quote_sol"] / b1["token_amount"], bn["quote_sol"] / bn["token_amount"]
+        run_up.append((pn / p1 - 1) * 100)
+        later = [t for t in ts if t["side"] == "sell" and t["ts"] > bn["ts"]]
+        if later:
+            to_sell.append((later[0]["ts"] - bn["ts"]) / 60)
+    return gaps, to_sell, run_up
+
+
+def _fmt_min(m):
+    return f"{m:.0f} min" if m < 120 else f"{m / 60:.1f} h"
+
+
 def report(rs, label, log=print):
     if not rs:
         log(f"  {label:<28} no positions")
@@ -89,5 +116,19 @@ def run(nths=(1, 2, 3, 5), log=print):
         sub = [r for r in rows if r["wallet"] == w]
         for n in nths:
             report(copy_returns(sub, n, prices), f"enter at buy #{n}", log)
+    log("\nTiming (all tracked wallets):")
+    for n in nths:
+        if n == 1:
+            continue
+        gaps, to_sell, run_up = timing(rows, n)
+        if not gaps:
+            continue
+        q = lambda xs, p: sorted(xs)[min(int(len(xs) * p), len(xs) - 1)]
+        log(f"  buy #1 -> #{n}: median {_fmt_min(statistics.median(gaps))} "
+            f"(fastest quarter under {_fmt_min(q(gaps, .25))}); "
+            f"price moved {statistics.median(run_up):+.0f}% (median)")
+        if to_sell:
+            log(f"  buy #{n} -> wallet's next sale: median {_fmt_min(statistics.median(to_sell))} "
+                f"(fastest quarter under {_fmt_min(q(to_sell, .25))})")
     log("\nCaveats: one week of data; real copies enter minutes later than the wallet;")
     log("a strategy needs many more trades before trusting it.")

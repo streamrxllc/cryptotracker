@@ -18,3 +18,10 @@ def test_enter_at_nth_buy_and_exit_with_wallet():
     assert abs(r[3] / 100 - (exit_value / 0.004 - 1)) < 1e-9
     assert abs(r[1] / 100 - (exit_value / 0.001 - 1)) < 1e-9
     assert backtest.copy_returns(trades, 4, {}, slip=0) == []
+
+
+def test_timing():
+    trades = [t("buy", 1, 1000, 0), t("buy", 1, 500, 600), t("buy", 1, 250, 1200),
+              t("sell", 8, 875, 4800)]
+    gaps, to_sell, run_up = backtest.timing(trades, 3)
+    assert gaps == [20.0] and to_sell == [60.0] and run_up == [300.0]
