@@ -48,11 +48,14 @@ def main(argv=None):
         print(f"Stopped tracking {args.wallet}")
     elif args.cmd == "wallets":
         con = db.connect()
-        for w in con.execute("SELECT * FROM wallets ORDER BY tracked DESC, hits DESC"):
-            flags = ("TRACKED " if w["tracked"] else "        ") + \
-                    ("bot " if w["is_bot"] else "") + ("cluster " if w["cluster"] else "")
-            print(f"{flags:<20} {w['address']}  hits={w['hits'] or 0} "
-                  f"tx/day={w['tx_per_day'] or 0:.0f} {w['label'] or ''}")
+        rows = con.execute("""SELECT * FROM wallets WHERE tracked=1 OR tx_per_day IS NOT NULL
+                              ORDER BY tracked DESC, hits DESC""").fetchall()
+        for w in rows:
+            status = "TRACKED" if w["tracked"] else (w["flag"] or "not picked")
+            if w["cluster"] and not w["tracked"]:
+                status += " (cluster)"
+            print(f"{w['address']}  hits={w['hits'] or 0:<3} {status}  {w['label'] or ''}")
+        print(f"\n{len(rows)} vetted or tracked wallets shown.")
     elif args.cmd == "track":
         if args.once:
             from smartmoney.helius import Helius

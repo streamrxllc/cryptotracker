@@ -38,10 +38,18 @@ CREATE TABLE IF NOT EXISTS alerts (mint TEXT PRIMARY KEY, sent_at INTEGER);
 """
 
 
+NEW_WALLET_COLUMNS = {"new_tokens_per_day": "REAL", "median_hold_min": "REAL", "flag": "TEXT"}
+
+
 def connect(path=None):
-    con = sqlite3.connect(path or config.DB_PATH, check_same_thread=False)
+    con = sqlite3.connect(path or config.DB_PATH, check_same_thread=False, timeout=30)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    have = {r[1] for r in con.execute("PRAGMA table_info(wallets)")}
+    for col, typ in NEW_WALLET_COLUMNS.items():
+        if col not in have:
+            con.execute(f"ALTER TABLE wallets ADD COLUMN {col} {typ}")
+    con.commit()
     return con
 
 

@@ -105,3 +105,22 @@ def test_signals_consensus():
     s = out[0]
     assert s["wallets"] == 3 and s["sellers"] == 1 and s["accumulators"] == 1
     assert s["net_sol"] == 4.5 and s["score"] == 3 + 2 + 1 - 0.5
+
+
+def test_trading_profile_and_flags():
+    cfg = types.SimpleNamespace(MAX_TX_PER_DAY=400, MAX_NEW_TOKENS_PER_DAY=25,
+                                MIN_MEDIAN_HOLD_MIN=10)
+    # Patient trader: 3 tokens over 2 days, sells hours later.
+    t0 = 1_000_000
+    txs = [swap("P", -1, 100, t0, mint="A"), swap("P", 2, -100, t0 + 7200, mint="A"),
+           swap("P", -1, 100, t0 + 86400, mint="B"), swap("P", -1, 100, t0 + 172800, mint="C")]
+    prof = vet.trading_profile(txs, "P")
+    assert round(prof["new_tokens_per_day"], 1) == 1.5 and prof["median_hold_min"] == 120
+    assert vet.flag_for(prof, cfg) is None
+    # Flipper: buys and sells within a minute.
+    txs = [swap("F", -1, 100, t0, mint="A"), swap("F", 1.1, -100, t0 + 40, mint="A"),
+           swap("F", -1, 100, t0 + 50000, mint="B"), swap("F", 1.1, -100, t0 + 50030, mint="B")]
+    assert vet.flag_for(vet.trading_profile(txs, "F"), cfg).startswith("flipper")
+    # Spray buyer: 40 different tokens in a few hours.
+    txs = [swap("S", -0.2, 100, t0 + i * 300, mint=f"M{i}") for i in range(40)]
+    assert vet.flag_for(vet.trading_profile(txs, "S"), cfg).startswith("spray")

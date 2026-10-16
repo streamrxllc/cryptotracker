@@ -1,9 +1,10 @@
 """Step 2: drop bots and sybil clusters, then start tracking the best wallets."""
-from collections import defaultdict
+import statistics
+from collections import Counter, defaultdict
 
 from . import config, db
-from .helius import Helius
-from .parse import owner_deltas, account_keys
+from .helius import Helius, HeliusError
+from .parse import account_keys, extract_trades, owner_deltas
 
 
 def tx_rate(sig_rows):
@@ -48,48 +49,111 @@ def assign_clusters(funders, max_size):
     return out
 
 
+def trading_profile(txs, wallet):
+    """Behaviour from a wallet's recent transactions (any order). Pure function.
+
+    Returns tx_per_day, new_tokens_per_day (distinct tokens bought per day),
+    and median_hold_min (first buy -> first sell, over tokens it sold).
+    """
+    times, first_buy, first_sell = [], {}, {}
+    for tx in txs:
+        ts = int(tx.get("blockTime") or 0)
+        if ts:
+            times.append(ts)
+        for t in extract_trades(tx, wallet):
+            if t.side == "buy":
+                first_buy[t.mint] = min(first_buy.get(t.mint, ts), ts)
+            elif t.side == "sell":
+                first_sell[t.mint] = min(first_sell.get(t.mint, ts), ts)
+    if len(times) < 2:
+        return {"tx_per_day": 0.0, "new_tokens_per_day": 0.0, "median_hold_min": None}
+    span_days = max((max(times) - min(times)) / 86400, 1 / 24)
+    holds = [(first_sell[m] - b) / 60 for m, b in first_buy.items()
+             if m in first_sell and first_sell[m] >= b]
+    return {
+        "tx_per_day": len(times) / span_days,
+        "new_tokens_per_day": len(first_buy) / span_days,
+        "median_hold_min": statistics.median(holds) if holds else None,
+    }
+
+
+def flag_for(profile, cfg=config):
+    """Why a wallet can't be copied, or None if it looks copyable."""
+    if profile["tx_per_day"] > cfg.MAX_TX_PER_DAY:
+        return f"bot: {profile['tx_per_day']:.0f} tx/day"
+    if profile["new_tokens_per_day"] > cfg.MAX_NEW_TOKENS_PER_DAY:
+        return f"spray: buys {profile['new_tokens_per_day']:.0f} new tokens/day"
+    hold = profile["median_hold_min"]
+    if hold is not None and hold < cfg.MIN_MEDIAN_HOLD_MIN:
+        return f"flipper: median hold {hold:.1f} min"
+    return None
+
+
 def run(log=print):
     con = db.connect()
     hel = Helius()
-    cands = con.execute("""SELECT * FROM wallets WHERE source='discovered'
-                           ORDER BY hits DESC, avg_multiple DESC""").fetchall()
+    cands = con.execute("""SELECT * FROM wallets WHERE source='discovered' AND hits >= ?
+                           ORDER BY hits DESC, avg_multiple DESC LIMIT ?""",
+                        (config.MIN_HITS, config.VET_TOP)).fetchall()
     if not cands:
         log("No candidates yet. Run: python main.py discover")
         return
-    log(f"Vetting {len(cands)} candidates...")
-    funders = {}
-    for c in cands:
+    total = con.execute("SELECT COUNT(*) FROM wallets WHERE source='discovered'").fetchone()[0]
+    log(f"Vetting the top {len(cands)} of {total} candidates "
+        f"({config.MIN_HITS}+ hits; ~{len(cands) * 60:,} credits)...")
+    con.execute("UPDATE wallets SET tracked=0 WHERE source='discovered'")
+    con.commit()
+
+    funders, flags = {}, {}
+    for i, c in enumerate(cands, 1):
         w = c["address"]
-        sigs = list(hel.transactions(w, order="desc", full=False, limit=1000, max_txs=1000))
-        rate = tx_rate(sigs)
-        first = list(hel.transactions(w, order="asc", full=True, limit=20, max_txs=20))
-        funders[w] = find_funder(first, w)
-        db.upsert_wallet(con, w, tx_per_day=rate, funder=funders[w],
-                         is_bot=int(rate > config.MAX_TX_PER_DAY))
+        try:
+            recent = list(hel.transactions(w, order="desc", full=True, limit=100,
+                                           filters={"status": "succeeded"},
+                                           max_txs=config.VET_RECENT_TXS))
+            prof = trading_profile(recent, w)
+            first = list(hel.transactions(w, order="asc", full=True, limit=20, max_txs=20))
+            funders[w] = find_funder(first, w)
+        except HeliusError as e:
+            log(f"  {w[:8]}… skipped: {e}")
+            continue
+        flags[w] = flag_for(prof)
+        db.upsert_wallet(con, w, tx_per_day=prof["tx_per_day"],
+                         new_tokens_per_day=prof["new_tokens_per_day"],
+                         median_hold_min=prof["median_hold_min"], funder=funders[w],
+                         flag=flags[w], is_bot=int(flags[w] is not None))
+        if i % 25 == 0:
+            ok = sum(1 for f in flags.values() if f is None)
+            log(f"  {i}/{len(cands)} vetted, {ok} look copyable  [~{hel.credits:,} credits]")
 
     clusters = assign_clusters(funders, config.MAX_CLUSTER_SIZE)
     for w in funders:
         db.upsert_wallet(con, w, cluster=clusters.get(w))
 
-    # Pick: not a bot, one wallet per cluster (the best one), top N.
+    # Pick: copyable, one wallet per cluster (the best one), top N.
     chosen, used_clusters = [], set()
     for c in con.execute("""SELECT * FROM wallets WHERE source='discovered' AND is_bot=0
-                            ORDER BY hits DESC, avg_multiple DESC""").fetchall():
+                            AND flag IS NULL AND tx_per_day IS NOT NULL AND hits >= ?
+                            ORDER BY hits DESC, avg_multiple DESC""",
+                         (config.MIN_HITS,)).fetchall():
         if c["cluster"]:
             if c["cluster"] in used_clusters:
                 continue
             used_clusters.add(c["cluster"])
-        chosen.append(c["address"])
+        chosen.append(c)
         if len(chosen) >= config.AUTO_TRACK_TOP:
             break
-    for w in chosen:
-        db.upsert_wallet(con, w, tracked=1)
+    for c in chosen:
+        db.upsert_wallet(con, c["address"], tracked=1)
 
-    bots = sum(1 for c in cands if con.execute(
-        "SELECT is_bot FROM wallets WHERE address=?", (c["address"],)).fetchone()[0])
-    log(f"  bots dropped: {bots}")
-    log(f"  wallets in shared-funder clusters: {len(clusters)} "
-        f"(kept one per cluster)")
-    log(f"  now tracking: {len(chosen)} wallets")
+    reasons = Counter((f or "").split(":")[0] for f in flags.values() if f)
+    log(f"\nDropped: {reasons.get('bot', 0)} bots, {reasons.get('spray', 0)} spray buyers, "
+        f"{reasons.get('flipper', 0)} quick flippers; "
+        f"{len(clusters)} wallets in shared-funder clusters (kept one each).")
+    log(f"Now tracking {len(chosen)} wallets:")
+    for c in chosen[:20]:
+        hold = f"{c['median_hold_min']:.0f}m" if c["median_hold_min"] is not None else "holds"
+        log(f"  {c['address']}  hits={c['hits']}  {c['new_tokens_per_day']:.1f} tokens/day  "
+            f"median hold {hold}")
     log(f"Estimated Helius credits used: {hel.credits:,}")
-    log("Next: python main.py serve   (or: python main.py track --once)")
+    log("Next: start the 'Solana Wallet Tracker' workflow (or: python main.py track --once)")

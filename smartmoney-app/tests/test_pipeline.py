@@ -21,11 +21,11 @@ class FakeHelius:
             txs += [swap(w, -1, 1000, 2000 + i, mint=m) for i, w in enumerate(["W1", "W2", "W3", "BOT"])]
             txs += [swap(f"L{i}", -1, 10, 9000 + i, mint=m) for i in range(500)]
             return iter(txs)
-        if not full:  # signatures for tx-rate
-            gap = 5 if address == "BOT" else 3600
-            return iter([{"blockTime": NOW - i * gap} for i in range(50)])
         if order == "asc" and limit == 20:  # funding lookup
             return iter([])
+        if order == "desc":  # vetting: recent history
+            gap = 5 if address == "BOT" else 3 * 3600
+            return iter([swap(address, -1, 10, NOW - i * gap, mint=f"T{i % 3}") for i in range(50)])
         # tracking: each wallet buys token Z
         return iter([swap(address, -1, 100, NOW - 600, mint="Zzz")])
 
@@ -41,6 +41,7 @@ def test_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "t.db"))
     monkeypatch.setattr(config, "WINNERS_FILE", str(winners))
     monkeypatch.setattr(config, "EXPENSIVE_RUN_STOP", 100)
+    monkeypatch.setattr(config, "MIN_HITS", 2)
     for mod in (discover, vet):
         monkeypatch.setattr(mod, "Helius", FakeHelius)
     monkeypatch.setattr(dexscreener, "best_pairs", fake_pairs)
