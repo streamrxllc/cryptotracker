@@ -51,6 +51,9 @@ def _date(ts):
     return local_now(ts).strftime("%b %d")
 
 
+BOARD_DAYS = 7
+
+
 def gather(con, now=None):
     """Collect the report's data. Returns a dict (no network beyond Dexscreener)."""
     now = now or int(time.time())
@@ -79,7 +82,25 @@ def gather(con, now=None):
             else:
                 recent[k]["sells"] += 1
 
+    # Buys per local calendar day for the last BOARD_DAYS days, oldest first.
+    today0 = local_now(now).replace(hour=0, minute=0, second=0, microsecond=0)
+    starts = [int(today0.timestamp()) - d * 86400 for d in range(BOARD_DAYS - 1, -1, -1)]
+    daily = defaultdict(lambda: [0] * BOARD_DAYS)
+    last_buy = {}
+    for r in rows:
+        if r["side"] != "buy":
+            continue
+        k = (r["wallet"], r["mint"])
+        last_buy[k] = max(last_buy.get(k, 0), r["ts"])
+        for i in range(BOARD_DAYS - 1, -1, -1):
+            if r["ts"] >= starts[i]:
+                daily[k][i] += 1
+                break
+
     for p in pos:
+        k = (p["wallet"], p["mint"])
+        p["daily"] = daily[k]
+        p["last_buy"] = last_buy.get(k)
         i = info.get(p["mint"], {})
         p["symbol"] = i.get("symbol") or p["mint"][:6]
         p["mcap"], p["url"] = i.get("mcap"), i.get("url")
@@ -92,6 +113,7 @@ def gather(con, now=None):
             holders[p["mint"]].add(p["wallet"])
     return {"now": now, "sol_usd": sol_usd, "wallets": ws, "positions": pos,
             "shared": {m: w for m, w in holders.items() if len(w) >= 2},
+            "day_labels": [local_now(t).strftime("%a")[0] for t in starts],
             "paper": paper.summary(con)}
 
 
@@ -129,6 +151,53 @@ def render(data):
              f"<p style='color:#666;margin:0 0 16px'>Watched wallets, last "
              f"{config.REPORT_LOOKBACK_DAYS:g} days of tracked trades. SOL = ${sol:,.0f}.</p>"]
     text = [f"Smart money report · {today} (SOL ${sol:,.0f})", ""]
+
+    # --- Accumulation board: positions being built, most buys first -------
+    board = sorted([p for p in open_ if p["buys"] >= 2],
+                   key=lambda p: (-p["buys"], -p["sol_in"]))
+    shared = data["shared"]
+
+    def strip(counts):
+        cells = []
+        for c in counts:
+            shade = ("#eee" if c == 0 else "#b7e4c7" if c <= 2 else
+                     "#52b788" if c <= 5 else "#1b7f4b")
+            fg = "#999" if c == 0 else ("#fff" if c > 5 else "#111")
+            cells.append(f"<span style='display:inline-block;width:20px;text-align:center;"
+                         f"background:{shade};color:{fg};border-radius:3px;margin-right:2px;"
+                         f"font-size:11px;line-height:18px'>{c or '·'}</span>")
+        return "".join(cells)
+
+    def days_building(p):
+        if not p.get("last_buy"):
+            return "–"
+        d = (p["last_buy"] - p["first_buy"]) / 86400
+        return "same day" if d < 1 else ("1 day" if d < 1.5 else f"{d:.0f} days")
+
+    labels = "".join(f"<span style='display:inline-block;width:20px;text-align:center;"
+                     f"margin-right:2px;color:#999;font-size:10px'>{x}</span>"
+                     for x in data.get("day_labels", []))
+    parts.append("<h3 style='margin-bottom:4px'>📈 Accumulation board</h3>"
+                 "<p style='color:#666;margin:0 0 8px;font-size:13px'>Open positions the "
+                 "watched wallets have bought 2+ times, most buys first. The strip shows buys "
+                 f"per day over the last {BOARD_DAYS} days (oldest → today). 🤝 = held by 2+ "
+                 "watched wallets.</p>")
+    text.append("ACCUMULATION BOARD (open, 2+ buys, most buys first)")
+    if board:
+        parts.append(table(
+            ["Token", "Wallet", "Buys", f"Buys per day<br>{labels}", "Building for", "Sells",
+             "Put in", "Worth now", "Result", "MCap"],
+            [[tok(p) + (" 🤝" if p["mint"] in shared else ""), _short(p["wallet"]),
+              f"<b>{p['buys']}</b>", strip(p["daily"]), days_building(p), p["sells"],
+              f"{p['sol_in']:.1f} SOL", f"{p['held_value']:.1f} SOL", pct(p["pnl_pct"]),
+              _usd(p["mcap"])] for p in board[:25]]))
+        text += [f"  {p['symbol']:<10} {_short(p['wallet'])}  {p['buys']:>3} buys  "
+                 f"[{' '.join(str(c) for c in p['daily'])}]  {days_building(p)}  "
+                 f"{p['sells']} sells  {p['pnl_pct']:+.0f}%" for p in board[:25]]
+    else:
+        parts.append("<p>No positions with 2+ buys yet.</p>")
+        text.append("  none")
+    text.append("")
 
     parts.append("<h3>🟢 Accumulating in the last 24h</h3>")
     text.append("ACCUMULATING (last 24h)")

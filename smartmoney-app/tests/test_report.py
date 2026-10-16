@@ -118,3 +118,16 @@ def test_sms_truncates_cleanly(tmp_path, monkeypatch):
     many = [dict(data["positions"][0], symbol=f"TOKEN{i:02d}LONGNAME") for i in range(20)]
     sms = report.sms_text({**data, "positions": many})
     assert len(sms) <= 153 and sms.endswith("more")
+
+
+def test_accumulation_board(tmp_path, monkeypatch):
+    con = setup(tmp_path, monkeypatch)
+    data = report.gather(con, NOW)
+    norm = next(p for p in data["positions"] if p["wallet"] == D9 and p["mint"] == "NORMIE")
+    assert sum(norm["daily"]) == 6 and len(norm["daily"]) == report.BOARD_DAYS
+    assert norm["daily"][-1] >= 1          # bought today
+    _, html_body, text, _ = report.render(data)
+    board = text.split("ACCUMULATION BOARD")[1].split("ACCUMULATING")[0]
+    assert "NORMIE" in board and "6 buys" in board
+    assert "FTR" not in board               # only 1 buy -> not on the board
+    assert "Accumulation board" in html_body and "🤝" in html_body
