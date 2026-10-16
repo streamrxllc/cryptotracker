@@ -5,6 +5,8 @@ once a day at REPORT_HOUR in REPORT_TZ, from inside the tracker loop.
 """
 import html
 import smtplib
+
+import requests
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -208,26 +210,42 @@ def render(data):
     return subject, "".join(parts), "\n".join(text), "\n".join(tg)
 
 
+def email_configured():
+    return bool(config.REPORT_EMAIL_TO and (config.RESEND_API_KEY or
+                                             (config.SMTP_USER and config.SMTP_PASSWORD)))
+
+
 def send_email(subject, html_body, text_body):
-    if not (config.SMTP_USER and config.SMTP_PASSWORD and config.REPORT_EMAIL_TO):
-        raise RuntimeError("Set SMTP_USER, SMTP_PASSWORD and REPORT_EMAIL_TO in Replit Secrets.")
+    if not config.REPORT_EMAIL_TO:
+        raise RuntimeError("Set REPORT_EMAIL_TO in Replit Secrets.")
+    to = [a.strip() for a in config.REPORT_EMAIL_TO.split(",") if a.strip()]
+    if config.RESEND_API_KEY:
+        r = requests.post("https://api.resend.com/emails", timeout=30,
+                          headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
+                          json={"from": config.REPORT_EMAIL_FROM, "to": to, "subject": subject,
+                                "html": html_body, "text": text_body})
+        if r.status_code >= 300:
+            raise RuntimeError(f"Resend said {r.status_code}: {r.text}")
+        return "Resend"
+    if not (config.SMTP_USER and config.SMTP_PASSWORD):
+        raise RuntimeError("Set RESEND_API_KEY (or SMTP_USER and SMTP_PASSWORD) in Replit Secrets.")
     msg = MIMEMultipart("alternative")
     msg["Subject"], msg["From"], msg["To"] = subject, config.SMTP_USER, config.REPORT_EMAIL_TO
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
     with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as s:
         s.login(config.SMTP_USER, config.SMTP_PASSWORD)
-        s.sendmail(config.SMTP_USER, [a.strip() for a in config.REPORT_EMAIL_TO.split(",")],
-                   msg.as_string())
+        s.sendmail(config.SMTP_USER, to, msg.as_string())
+    return "Gmail"
 
 
 def send(con=None, notify=None, log=print, now=None):
     con = con or db.connect()
     subject, html_body, text_body, tg = render(gather(con, now))
     sent = []
-    if config.SMTP_USER and config.SMTP_PASSWORD and config.REPORT_EMAIL_TO:
-        send_email(subject, html_body, text_body)
-        sent.append(f"email to {config.REPORT_EMAIL_TO}")
+    if email_configured():
+        via = send_email(subject, html_body, text_body)
+        sent.append(f"email to {config.REPORT_EMAIL_TO} via {via}")
     if notify and config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
         notify(tg, log)
         sent.append("Telegram summary")

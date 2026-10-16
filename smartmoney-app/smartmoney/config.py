@@ -102,6 +102,12 @@ REPORT_HOUR = _env("report_hour", 8, int)                  # local hour to send
 REPORT_TZ = _env("report_tz", "America/New_York")
 REPORT_LOOKBACK_DAYS = _env("report_lookback_days", 30, float)
 REPORT_EMAIL_TO = _env("report_email_to", "")              # comma-separated
+# Resend (used when RESEND_API_KEY is set). The From address must be on a
+# domain verified in Resend, or onboarding@resend.dev (only delivers to the
+# email your Resend account is registered with).
+RESEND_API_KEY = _env("resend_api_key", "")
+REPORT_EMAIL_FROM = _env("report_email_from", "Smart Money <onboarding@resend.dev>")
+# Gmail SMTP fallback (used when RESEND_API_KEY is empty).
 SMTP_USER = _env("smtp_user", "")                          # e.g. you@gmail.com
 SMTP_PASSWORD = _env("smtp_password", "")                  # Gmail app password
 SMTP_HOST = _env("smtp_host", "smtp.gmail.com")

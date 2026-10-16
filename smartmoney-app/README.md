@@ -76,7 +76,12 @@ report on the watched wallets: what each one accumulated or sold in the last
 buys/sells, result), and paper-trading results. A short version goes to
 Telegram too.
 
-Setup (Gmail): turn on 2-Step Verification, create an app password at
+Setup (Resend): add Secrets `RESEND_API_KEY`, `REPORT_EMAIL_TO` and, if you
+have a verified domain in Resend, `REPORT_EMAIL_FROM` (e.g.
+`Smart Money <alerts@yourdomain.com>`). Without a verified domain the default
+sender `onboarding@resend.dev` only delivers to your Resend account's email.
+
+Setup (Gmail, instead of Resend): turn on 2-Step Verification, create an app password at
 myaccount.google.com/apppasswords, then add Secrets `SMTP_USER` (your Gmail
 address), `SMTP_PASSWORD` (the 16-character app password) and
 `REPORT_EMAIL_TO` (where to send it). Test with `python main.py report --send`;

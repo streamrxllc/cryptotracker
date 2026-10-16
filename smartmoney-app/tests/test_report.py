@@ -52,8 +52,28 @@ def test_daily_once_after_hour(tmp_path, monkeypatch):
     assert len(sent) == 2
 
 
+def test_send_email_via_resend(tmp_path, monkeypatch):
+    con = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(config, "REPORT_EMAIL_TO", "me@x.com, you@y.com")
+    calls = {}
+
+    class R:
+        status_code, text = 200, '{"id":"1"}'
+    def fake_post(url, timeout, headers, json):
+        calls.update(url=url, headers=headers, json=json)
+        return R()
+    monkeypatch.setattr(report.requests, "post", fake_post)
+    report.send(con, None, log=lambda *a: None, now=NOW)
+    assert calls["url"] == "https://api.resend.com/emails"
+    assert calls["headers"]["Authorization"] == "Bearer re_test"
+    assert calls["json"]["to"] == ["me@x.com", "you@y.com"]
+    assert calls["json"]["subject"].startswith("Smart money") and "<table" in calls["json"]["html"]
+
+
 def test_send_email_via_smtp(tmp_path, monkeypatch):
     con = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
     for k, v in {"SMTP_USER": "me@gmail.com", "SMTP_PASSWORD": "app-pass",
                  "REPORT_EMAIL_TO": "me@gmail.com"}.items():
         monkeypatch.setattr(config, k, v)
