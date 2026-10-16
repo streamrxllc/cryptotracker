@@ -76,6 +76,16 @@ MIN_BUY_SOL = _env("min_buy_sol", 0.05, float)
 LATE_PCT_24H = _env("late_pct_24h", 300.0, float)
 ALERT_COOLDOWN_HOURS = _env("alert_cooldown_hours", 12, float)
 
+# --- Paper trading (fake money, scored like real trades) ----------------------
+PAPER_SIZE_USD = _env("paper_size_usd", 100, float)
+PAPER_SLIPPAGE_PCT = _env("paper_slippage_pct", 3, float)      # per side, incl. fees
+PAPER_MIN_LIQUIDITY_USD = _env("paper_min_liquidity_usd", 20000, float)
+PAPER_STOP_LOSS_PCT = _env("paper_stop_loss_pct", 40, float)
+PAPER_TRAIL_ARM_X = _env("paper_trail_arm_x", 2.0, float)      # trailing stop starts at 2x
+PAPER_TRAIL_PCT = _env("paper_trail_pct", 30, float)           # ...sells 30% off the high
+PAPER_MAX_HOLD_HOURS = _env("paper_max_hold_hours", 168, float)
+PAPER_REENTRY_HOURS = _env("paper_reentry_hours", 24, float)   # no re-buy right after exit
+
 # --- Networking ---------------------------------------------------------------
 REQUESTS_PER_SECOND = _env("requests_per_second", 5.0, float)
 PORT = _env("port", 8080, int)

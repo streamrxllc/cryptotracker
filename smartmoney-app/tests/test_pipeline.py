@@ -61,4 +61,5 @@ def test_pipeline(tmp_path, monkeypatch):
     assert sigs and sigs[0]["mint"] == "Zzz" and sigs[0]["wallets"] == 3
     page = web.app.test_client().get("/").data.decode()
     assert "Zzz"[:4] in page and "Tracked wallets (3)" in page
+    assert "Paper trades" in page and "PAPER BUY" in "\n".join(out)
     print("\n".join(out))

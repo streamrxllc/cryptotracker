@@ -9,6 +9,7 @@
   python main.py remove WALLET       stop tracking a wallet
   python main.py wallets             list candidates and tracked wallets
   python main.py track --once        one polling cycle, print signals
+  python main.py paper               paper-trading results so far
   python main.py serve               dashboard + tracker loop (Replit's Run button)
 """
 import argparse
@@ -31,6 +32,7 @@ def main(argv=None):
     sub.add_parser("wallets")
     t = sub.add_parser("track"); t.add_argument("--once", action="store_true")
     sub.add_parser("serve")
+    sub.add_parser("paper")
     args = ap.parse_args(argv)
 
     if args.cmd == "setup":
@@ -66,6 +68,9 @@ def main(argv=None):
             tracker.cycle(Helius(), db.connect())
         else:
             tracker.loop()
+    elif args.cmd == "paper":
+        from smartmoney import paper
+        paper.print_summary()
     elif args.cmd == "serve" or args.cmd is None:
         from smartmoney import web
         web.serve(config.PORT)

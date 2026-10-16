@@ -5,7 +5,7 @@ import time
 
 from flask import Flask, jsonify
 
-from . import db, tracker
+from . import config, db, paper, tracker
 
 app = Flask(__name__)
 
@@ -37,6 +37,16 @@ def index():
         f"<td>{s.get('change_h24') if s.get('change_h24') is not None else '–'}%</td>"
         f"<td>{_ago(s['last_buy'])}</td></tr>"
         for s in st["signals"]) or "<tr><td colspan=7>No consensus yet.</td></tr>"
+    ps = paper.summary(con)
+    def prow(r):
+        cls = "up" if r["pnl_pct"] > 0 else "down"
+        state = html.escape(r["exit_reason"] or "open")
+        return (f"<tr><td><a href='{html.escape(r['url'] or '#')}'>{html.escape(r['symbol'])}</a></td>"
+                f"<td class={cls}>{r['pnl_pct']:+.1f}%</td><td class={cls}>${r['pnl_usd']:+,.0f}</td>"
+                f"<td>{state}</td><td>{_ago(r['opened_at'])}</td></tr>")
+    prows = "".join(prow(r) for r in ps["open"] + ps["closed"][:30]) or \
+        "<tr><td colspan=5>No paper trades yet. One opens automatically on each signal.</td></tr>"
+    wr = f"{ps['win_rate']:.0f}%" if ps["win_rate"] is not None else "–"
     wl = "".join(
         f"<li><a href='https://solscan.io/account/{w['address']}'>{w['label'] or w['address'][:6] + '…' + w['address'][-4:]}</a>"
         f" · {w['hits'] or 0} hits</li>" for w in tracked)
@@ -49,7 +59,7 @@ body{{font:15px system-ui;background:var(--bg);color:var(--fg);margin:0;padding:
 table{{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}}
 th,td{{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}}
 th{{color:var(--mut);font-weight:500;font-size:12px}} tr.late{{background:var(--warn)}}
-a{{color:inherit}} .mut{{color:var(--mut);font-size:13px}} .wrap{{overflow-x:auto}}
+a{{color:inherit}} .up{{color:#1a7f37}} .down{{color:#cf222e}} .mut{{color:var(--mut);font-size:13px}} .wrap{{overflow-x:auto}}
 </style>
 <h2>Consensus buys</h2>
 <p class=mut>Tokens {tracker.config.MIN_WALLETS_FOR_SIGNAL}+ tracked wallets are net buying in the last
@@ -58,6 +68,12 @@ a{{color:inherit}} .mut{{color:var(--mut);font-size:13px}} .wrap{{overflow-x:aut
 <div class=wrap><table><tr><th>Token</th><th>Wallets</th><th>Adding</th><th>Net SOL</th>
 <th>MCap</th><th>24h</th><th>Last buy</th></tr>{rows}</table></div>
 <p class=mut>⚠️ = already up {tracker.config.LATE_PCT_24H:g}%+ in 24h. Not financial advice; verify on-chain before buying.</p>
+<h2>Paper trades</h2>
+<p class=mut>${config.PAPER_SIZE_USD:g} per signal, {config.PAPER_SLIPPAGE_PCT:g}% slippage each way.
+Realized <b>${ps['realized_usd']:+,.0f}</b> on {len(ps['closed'])} closed (win rate {wr}) ·
+open <b>${ps['unrealized_usd']:+,.0f}</b> on {len(ps['open'])}.</p>
+<div class=wrap><table><tr><th>Token</th><th>P&amp;L</th><th>$</th><th>Status</th><th>Opened</th></tr>
+{prows}</table></div>
 <h3>Tracked wallets ({len(tracked)})</h3><ul class=mut>{wl}</ul>"""
 
 

@@ -55,6 +55,23 @@ changing them; costs no credits).
 The signal score weights each buyer by how many winners they were early on,
 and subtracts half a point for each tracked wallet that is net selling.
 
+## Paper trading
+
+Every signal automatically opens a fake $100 position (`PAPER_SIZE_USD`) at
+the current price plus 3% slippage, if the token has $20k+ liquidity and
+hasn't already run. Each position closes on the first of:
+
+| Exit | Rule |
+|---|---|
+| Stop loss | down **40%** |
+| Trailing stop | once up **2x**, sells if it falls **30%** from its high |
+| Smart money sold | half or more of the wallets that triggered the buy have sold |
+| Time stop | held **7 days** |
+
+Results are on the dashboard and via `python main.py paper`. Buys and sells
+also go to Telegram if it's set up. Run this for a couple of weeks before
+putting real money behind the signals.
+
 ## Cost (Helius free plan = 1M credits/month)
 
 - Discovery: up to ~2,000 credits per winner (stops early once the price

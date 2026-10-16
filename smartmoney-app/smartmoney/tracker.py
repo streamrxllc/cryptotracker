@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from . import config, db, dexscreener, signals
+from . import config, db, dexscreener, paper, signals
 from .helius import Helius, HeliusError
 from .parse import extract_trades
 
@@ -46,10 +46,20 @@ def current_signals(con, sol_usd=None):
             info = dexscreener.summarize(pairs.get(s["mint"]))
             db.upsert_token(con, s["mint"], info)
             s.update({k: info.get(k) for k in
-                      ("symbol", "name", "mcap", "liquidity", "change_h24", "url")})
+                      ("symbol", "name", "price_usd", "mcap", "liquidity", "change_h24", "url")})
             ch = info.get("change_h24") or 0
             s["late"] = ch >= config.LATE_PCT_24H
     return sigs
+
+
+def notify(text, log=print):
+    if not (config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID):
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+                      json={"chat_id": config.TELEGRAM_CHAT_ID, "text": text}, timeout=15)
+    except requests.RequestException as e:
+        log(f"telegram failed: {e}")
 
 
 def send_alerts(con, sigs, log=print):
@@ -87,6 +97,11 @@ def cycle(hel, con, log=print):
     sol_usd = dexscreener.sol_usd()
     sigs = current_signals(con, sol_usd)
     send_alerts(con, sigs, log)
+    try:
+        for e in paper.update(con, sigs, log=log):
+            notify(e, log)
+    except Exception as e:  # paper trading must never stop tracking
+        log(f"paper trading error: {e}")
     STATE.update(last_cycle=int(time.time()), credits=hel.credits, signals=sigs,
                  sol_usd=sol_usd)
     log(f"[{time.strftime('%H:%M')}] {len(wallets)} wallets polled, {total} new trades, "
