@@ -14,14 +14,11 @@ localPort = 18182
 [services.development]
 run = "cd ../../smartmoney-app && python main.py serve"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/smartmoney-dashboard", "run", "build" ]
-serve = "static"
-publicDir = "artifacts/smartmoney-dashboard/dist/public"
+[services.production.build]
+args = ["bash", "-lc", "if [ -f pyproject.toml ]; then uv sync --locked; else uv sync --project ../.. --locked; fi"]
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+[services.production.run]
+args = ["bash", "-lc", "cd ../../smartmoney-app && exec uv run --project .. --locked --no-sync python -m gunicorn --chdir . --workers 1 --worker-class gthread --threads 4 --bind 0.0.0.0:$PORT smartmoney.wsgi:app"]
 
 [services.env]
 PORT = "18182"
