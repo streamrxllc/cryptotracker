@@ -42,3 +42,14 @@ def test_check_seeds_then_alerts_once(tmp_path, monkeypatch):
     msgs = accumulation.check(con, notify, log=lambda *a: None, now=now)
     assert len(msgs) == 1 and "SELLING Normie" in msgs[0]
     assert len(accumulation.recent(con)) == 2
+
+
+def test_sell_alert_for_position_built_long_ago():
+    day = 86400
+    tr = [{"wallet": W, "mint": "NORM", "side": "buy", "quote_sol": 5, "token_amount": 100,
+           "ts": 1_000_000 + i * 600} for i in range(6)]
+    tr.append({"wallet": W, "mint": "NORM", "side": "sell", "quote_sol": -20,
+               "token_amount": 300, "ts": 1_000_000 + 6 * day})
+    now = 1_000_000 + 6 * day + 60
+    ev = accumulation.events(tr, [3, 5, 8], now, 72, 0.5, set(), sell_lookback_hours=30 * 24)
+    assert [e[2] for e in ev] == ["sell"] and ev[0][3]["sold_sol"] == 20

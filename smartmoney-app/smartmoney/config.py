@@ -87,6 +87,8 @@ WATCH_WALLETS = [w.strip() for w in _env(
 ACCUM_MILESTONES = [int(x) for x in _env("accum_milestones", "3,5,8").split(",")]
 ACCUM_WINDOW_HOURS = _env("accum_window_hours", 72, float)
 ACCUM_MIN_BUY_SOL = _env("accum_min_buy_sol", 0.5, float)   # ignore dust buys
+# Sell (exit) alerts look this far back for the accumulation they end.
+ACCUM_SELL_LOOKBACK_DAYS = _env("accum_sell_lookback_days", 30, float)
 # Staked SOL and similar: steady buying here isn't memecoin accumulation.
 NON_MEME_MINTS = {
     "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   # mSOL

@@ -23,21 +23,38 @@ def watched(con):
     return [w for w in config.WATCH_WALLETS if w]
 
 
-def events(trades, milestones, now, window_hours, min_buy_sol, skip_mints):
+def events(trades, milestones, now, window_hours, min_buy_sol, skip_mints,
+           sell_lookback_hours=None):
     """Pure: which alerts the trades call for.
 
     trades: dicts with wallet, mint, side, quote_sol, token_amount, ts.
-    Returns [(wallet, mint, kind, info)] where kind is 'buy3', 'buy5', ... or
-    'sell' (first sell after the wallet reached the lowest milestone).
+    Returns [(wallet, mint, kind, info)] where kind is 'buy3', 'buy5', ... (buys
+    within window_hours) or 'sell': the first sell after a wallet reached the
+    lowest milestone, looking back sell_lookback_hours so a position built last
+    week still gets its exit alert.
     """
     since = now - window_hours * 3600
+    sell_since = now - (sell_lookback_hours or window_hours) * 3600
     g = defaultdict(list)
     for t in trades:
-        if t["ts"] >= since and t["mint"] not in skip_mints:
+        if t["ts"] >= sell_since and t["mint"] not in skip_mints:
             g[(t["wallet"], t["mint"])].append(t)
     out = []
-    for (w, m), ts in g.items():
-        ts.sort(key=lambda t: t["ts"])
+    for (w, m), all_ts in g.items():
+        all_ts.sort(key=lambda t: t["ts"])
+        all_buys = [t for t in all_ts if t["side"] == "buy"
+                    and abs(t["quote_sol"] or 0) >= min_buy_sol]
+        if len(all_buys) >= milestones[0]:
+            third = all_buys[milestones[0] - 1]["ts"]
+            sells = [t for t in all_ts if t["side"] == "sell" and t["ts"] > third]
+            if sells:
+                sol_in = sum(abs(t["quote_sol"] or 0) for t in all_buys)
+                out.append((w, m, "sell", {
+                    "buys": len(all_buys), "sol_in": sol_in, "avg_price_sol": None,
+                    "first_ts": all_buys[0]["ts"], "last_ts": all_buys[-1]["ts"],
+                    "sell_ts": sells[0]["ts"],
+                    "sold_sol": sum(abs(t["quote_sol"] or 0) for t in sells)}))
+        ts = [t for t in all_ts if t["ts"] >= since]
         buys = [t for t in ts if t["side"] == "buy" and abs(t["quote_sol"] or 0) >= min_buy_sol]
         n = len(buys)
         sol_in = sum(abs(t["quote_sol"] or 0) for t in buys)
@@ -48,12 +65,6 @@ def events(trades, milestones, now, window_hours, min_buy_sol, skip_mints):
         for k in milestones:
             if n >= k:
                 out.append((w, m, f"buy{k}", info))
-        if n >= milestones[0]:
-            third = buys[milestones[0] - 1]["ts"]
-            sells = [t for t in ts if t["side"] == "sell" and t["ts"] > third]
-            if sells:
-                out.append((w, m, "sell", {**info, "sell_ts": sells[0]["ts"],
-                                           "sold_sol": sum(abs(t["quote_sol"] or 0) for t in sells)}))
     return out
 
 
@@ -91,9 +102,10 @@ def check(con, notify, log=print, now=None):
     q = ",".join("?" * len(ws))
     rows = [dict(r) for r in con.execute(
         f"SELECT * FROM trades WHERE wallet IN ({q}) AND ts >= ?",
-        ws + [now - config.ACCUM_WINDOW_HOURS * 3600])]
+        ws + [now - config.ACCUM_SELL_LOOKBACK_DAYS * 86400])]
     evs = events(rows, config.ACCUM_MILESTONES, now, config.ACCUM_WINDOW_HOURS,
-                 config.ACCUM_MIN_BUY_SOL, config.NON_MEME_MINTS | config.QUOTE_MINTS)
+                 config.ACCUM_MIN_BUY_SOL, config.NON_MEME_MINTS | config.QUOTE_MINTS,
+                 sell_lookback_hours=config.ACCUM_SELL_LOOKBACK_DAYS * 24)
     sent = {(r[0], r[1], r[2]) for r in con.execute("SELECT wallet, mint, kind FROM accum_alerts")}
     new = [e for e in evs if (e[0], e[1], e[2]) not in sent]
     # First run: record what already happened without spamming old alerts.
