@@ -18,7 +18,10 @@ run = "cd ../../smartmoney-app && python main.py serve"
 args = ["bash", "-lc", "if [ -f pyproject.toml ]; then uv sync --locked; else uv sync --project ../.. --locked; fi"]
 
 [services.production.run]
-args = ["bash", "-lc", "cd ../../smartmoney-app && exec uv run --project .. --locked --no-sync python -m gunicorn --chdir . --workers 1 --worker-class gthread --threads 4 --bind 0.0.0.0:$PORT smartmoney.wsgi:app"]
+args = ["bash", "-lc", "cd smartmoney-app && exec uv run --project .. --locked --no-sync python -m gunicorn --chdir . --workers 1 --worker-class gthread --threads 4 --bind 0.0.0.0:$PORT smartmoney.wsgi:app"]
+
+[services.production.health.startup]
+path = "/login"
 
 [services.env]
 PORT = "18182"
