@@ -53,6 +53,10 @@ def test_pipeline(tmp_path, monkeypatch):
     vet.run(log=out.append)
     tracked = {r[0] for r in con.execute("SELECT address FROM wallets WHERE tracked=1")}
     assert tracked == {"W1", "W2", "W3"}
+    # A wallet measured only by the old vetting must not be picked; pick is free.
+    db.upsert_wallet(con, "LEGACY", source="discovered", hits=9, tx_per_day=1.0)
+    picked = {c["address"] for c in vet.pick(con, log=out.append)}
+    assert picked == {"W1", "W2", "W3"}
     sigs = tracker.cycle(FakeHelius(), con, log=out.append)
     assert sigs and sigs[0]["mint"] == "Zzz" and sigs[0]["wallets"] == 3
     page = web.app.test_client().get("/").data.decode()

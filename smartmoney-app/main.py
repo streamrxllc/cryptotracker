@@ -3,7 +3,8 @@
   python main.py setup               winners + discover + vet in one go
   python main.py winners             find past winners from price history (auto)
   python main.py discover            find wallets early on those winners
-  python main.py vet                 drop bots/clusters, start tracking the best
+  python main.py vet                 measure candidates, drop bots/clusters, track the best
+  python main.py pick                re-apply the vetting rules to stored stats (no credits)
   python main.py add WALLET [label]  track a wallet by hand
   python main.py remove WALLET       stop tracking a wallet
   python main.py wallets             list candidates and tracked wallets
@@ -24,6 +25,7 @@ def main(argv=None):
     sub.add_parser("winners")
     sub.add_parser("discover")
     sub.add_parser("vet")
+    sub.add_parser("pick")
     a = sub.add_parser("add"); a.add_argument("wallet"); a.add_argument("label", nargs="?")
     r = sub.add_parser("remove"); r.add_argument("wallet")
     sub.add_parser("wallets")
@@ -39,6 +41,8 @@ def main(argv=None):
         discover.run()
     elif args.cmd == "vet":
         vet.run()
+    elif args.cmd == "pick":
+        vet.pick()
     elif args.cmd == "add":
         db.upsert_wallet(db.connect(), args.wallet, label=args.label, source="manual",
                          tracked=1)

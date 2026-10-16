@@ -32,7 +32,8 @@ past runners  early buyers  drop bots   new buys & sells      consensus
    To keep it running 24/7, deploy it as a Reserved VM (Deploy → Reserved VM).
 
 Other commands: `python main.py wallets`, `add WALLET [label]`, `remove WALLET`,
-`track --once`.
+`track --once`, and `pick` (re-apply vetting thresholds to stored stats after
+changing them; costs no credits).
 
 ## What counts as what
 
@@ -45,7 +46,7 @@ Other commands: `python main.py wallets`, `add WALLET [label]`, `remove WALLET`,
 | Candidate | Early on ≥ **3** winners (`MIN_HITS`); the top **300** by hits get vetted (`VET_TOP`) |
 | Bot | > **400** transactions/day |
 | Spray buyer | Buys > **25** different tokens/day: hits come from volume, not skill |
-| Quick flipper | Median hold < **10 minutes**: sells before you could copy the buy |
+| Quick flipper | Median hold < **30 minutes**: sells before a 15-minute poll could catch the buy |
 | Cluster | Wallets first funded by the same address (2–5 wallets); one is kept |
 | Signal | ≥ **3** tracked wallets net buying the same token within **48 h** |
 | "Adding" | Wallets that bought it more than once (accumulating, not one-shot) |
