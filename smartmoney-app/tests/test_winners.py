@@ -5,18 +5,27 @@ from smartmoney import config, gecko, winners, discover
 D = 86400
 
 
-def candles(prices_low_high):
-    return [(1_000_000 + i * D, 0, h, l, 0, 0) for i, (l, h) in enumerate(prices_low_high)]
+def candles(closes, wick=1.0):
+    """Daily candles from closes; lows/highs are wild wicks that must be ignored."""
+    return [(1_000_000 + i * D, c, c * 100 * wick, c / 100 * wick, c, 0)
+            for i, c in enumerate(closes)]
 
 
-def test_measure_run():
-    c = candles([(0.001, 0.002), (0.0008, 0.0015), (0.002, 0.004), (0.01, 0.02), (0.005, 0.01)])
+def test_measure_run_uses_closes():
+    c = candles([0.001, 0.0008, 0.004, 0.02, 0.01])
     mult, low, peak, ts = winners.measure_run(c, early_days=3)
     assert low == 0.0008 and peak == 0.02 and round(mult) == 25
 
 
+def test_bad_first_trade_doesnt_fake_a_run():
+    # Seeded at a silly price, then trades flat around $200 (tokenized-stock style).
+    c = [(1_000_000, 0.2, 210, 0.2, 200, 0)] + candles([201, 205, 199])[1:]
+    mult, *_ = winners.measure_run(c, early_days=3)
+    assert mult < 1.1
+
+
 def test_peak_must_come_after_low():
-    c = candles([(0.01, 0.05), (0.001, 0.002), (0.001, 0.003)])
+    c = candles([0.05, 0.001, 0.003])
     mult, low, peak, _ = winners.measure_run(c, early_days=3)
     assert low == 0.001 and peak == 0.003
 
@@ -47,7 +56,7 @@ def test_winners_run_writes_file(tmp_path, monkeypatch):
     old = dict(pool, base="OLD", pool="P2", created=now - 400 * D)
     monkeypatch.setattr(gecko, "top_pools", lambda **k: [pool, old])
     monkeypatch.setattr(gecko, "trending_pools", lambda **k: [])
-    monkeypatch.setattr(gecko, "daily_ohlcv", lambda p: candles([(0.0005, 0.001), (0.002, 0.05), (0.01, 0.02)]))
+    monkeypatch.setattr(gecko, "daily_ohlcv", lambda p: candles([0.001, 0.05, 0.02]))
     out_file = tmp_path / "auto.txt"
     monkeypatch.setattr(config, "WINNERS_AUTO_FILE", str(out_file))
     monkeypatch.setattr(config, "WINNERS_FILE", str(tmp_path / "none.txt"))

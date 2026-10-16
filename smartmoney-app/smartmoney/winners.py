@@ -14,23 +14,27 @@ from . import config, gecko
 def measure_run(candles, early_days=None):
     """From daily candles (oldest first) return (run_multiple, early_low, peak, peak_ts).
 
-    early_low = lowest low in the first `early_days` days of trading.
-    peak      = highest high after that low.
+    early_low = lowest daily CLOSE in the first `early_days` days of trading.
+    peak      = highest daily CLOSE after that.
+    Closes, not intraday lows/highs: a single bad first trade (a pool seeded
+    at a silly price) or a one-minute wick would otherwise fake a huge run.
+    Side effect: tokens that launched and topped within the same day score
+    low, which suits the "accumulated before it ran" idea anyway.
     """
     early_days = early_days or config.EARLY_DAYS
     if len(candles) < 2:
         return None
     first = candles[0][0]
     early = [c for c in candles if c[0] < first + early_days * 86400] or candles[:1]
-    lows = [c for c in early if c[3] > 0]
-    if not lows:
+    early = [c for c in early if c[4] > 0]
+    if not early:
         return None
-    low_c = min(lows, key=lambda c: c[3])
+    low_c = min(early, key=lambda c: c[4])
     after = [c for c in candles if c[0] >= low_c[0]]
-    peak_c = max(after, key=lambda c: c[2])
-    if peak_c[2] <= 0:
+    peak_c = max(after, key=lambda c: c[4])
+    if peak_c[4] <= 0:
         return None
-    return peak_c[2] / low_c[3], low_c[3], peak_c[2], int(peak_c[0])
+    return peak_c[4] / low_c[4], low_c[4], peak_c[4], int(peak_c[0])
 
 
 def select(cands, cfg=config):
