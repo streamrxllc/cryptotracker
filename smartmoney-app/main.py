@@ -1,6 +1,8 @@
 """Smart-money tracker for Solana.
 
-  python main.py discover            find wallets early on the tokens in winners.txt
+  python main.py setup               winners + discover + vet in one go
+  python main.py winners             find past winners from price history (auto)
+  python main.py discover            find wallets early on those winners
   python main.py vet                 drop bots/clusters, start tracking the best
   python main.py add WALLET [label]  track a wallet by hand
   python main.py remove WALLET       stop tracking a wallet
@@ -11,13 +13,15 @@
 import argparse
 import sys
 
-from smartmoney import config, db, discover, tracker, vet
+from smartmoney import config, db, discover, tracker, vet, winners
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("setup")
+    sub.add_parser("winners")
     sub.add_parser("discover")
     sub.add_parser("vet")
     a = sub.add_parser("add"); a.add_argument("wallet"); a.add_argument("label", nargs="?")
@@ -27,7 +31,11 @@ def main(argv=None):
     sub.add_parser("serve")
     args = ap.parse_args(argv)
 
-    if args.cmd == "discover":
+    if args.cmd == "setup":
+        winners.run(); print(); discover.run(); print(); vet.run()
+    elif args.cmd == "winners":
+        winners.run()
+    elif args.cmd == "discover":
         discover.run()
     elif args.cmd == "vet":
         vet.run()

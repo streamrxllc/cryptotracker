@@ -1,4 +1,5 @@
 """Step 1: find wallets that bought several past winners cheaply."""
+import os
 import statistics
 from collections import defaultdict
 
@@ -81,15 +82,22 @@ def scan_token(txs, mint, ref_price_sol, sol_usd=None, cfg=config):
                  "creator": creator}
 
 
-def read_winners(path=None):
-    """Lines of `MINT` or `MINT PEAK_PRICE_USD`. Returns {mint: peak_usd|None}."""
+def read_winners(paths=None):
+    """Lines of `MINT` or `MINT PEAK_PRICE_USD`. Returns {mint: peak_usd|None}.
+
+    Reads the auto-generated list, then your own winners.txt (which wins on
+    duplicates).
+    """
     out = {}
-    with open(path or config.WINNERS_FILE) as f:
-        for line in f:
-            parts = line.split("#")[0].split()
-            if not parts:
-                continue
-            out[parts[0]] = float(parts[1]) if len(parts) > 1 else None
+    for path in paths or (config.WINNERS_AUTO_FILE, config.WINNERS_FILE):
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            for line in f:
+                parts = line.split("#")[0].split()
+                if not parts:
+                    continue
+                out[parts[0]] = float(parts[1]) if len(parts) > 1 else None
     return out
 
 
@@ -99,7 +107,7 @@ def run(log=print):
     winners = read_winners()
     mints = list(winners)
     if not mints:
-        log(f"No token addresses in {config.WINNERS_FILE}.")
+        log("No winners yet. Run: python main.py winners  (or add mints to winners.txt)")
         return
     sol_usd = dexscreener.sol_usd()
     pairs = dexscreener.best_pairs(mints)

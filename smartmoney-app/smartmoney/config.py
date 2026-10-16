@@ -19,7 +19,17 @@ TELEGRAM_CHAT_ID = _env("telegram_chat_id", "")
 
 # --- Storage ---------------------------------------------------------------
 DB_PATH = _env("db_path", "smartmoney.db")
-WINNERS_FILE = _env("winners_file", "winners.txt")
+WINNERS_FILE = _env("winners_file", "winners.txt")            # your own picks (optional)
+WINNERS_AUTO_FILE = _env("winners_auto_file", "winners_auto.txt")  # written by `winners`
+
+# --- Winners: which past tokens count as "ran"? ------------------------------
+WINNER_MIN_AGE_DAYS = _env("winner_min_age_days", 7, float)    # launched at least this long ago
+WINNER_MAX_AGE_DAYS = _env("winner_max_age_days", 120, float)  # ...and no longer ago than this
+EARLY_DAYS = _env("early_days", 3, float)            # "early low" = lowest price in first N days
+MIN_RUN_MULTIPLE = _env("min_run_multiple", 10, float)   # early low -> peak
+MIN_PEAK_MCAP_USD = _env("min_peak_mcap_usd", 3_000_000, float)
+MAX_WINNERS = _env("max_winners", 40, int)
+MAX_WINNERS_PER_WEEK = _env("max_winners_per_week", 5, int)  # spread across launch weeks
 
 # --- Discovery: who bought the winners early? -------------------------------
 # A buy counts as "early" if the price paid was at least this many times

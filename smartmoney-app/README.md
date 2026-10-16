@@ -4,9 +4,9 @@ Finds wallets that repeatedly bought winners early, tracks them, and flags
 tokens that several of them are accumulating at the same time.
 
 ```
-winners.txt ──► discover ──► vet ──► track (every 15 min) ──► signals ──► dashboard / Telegram
- past runners   early buyers  drop bots   new buys & sells      consensus
-                on 2+ winners & clusters
+winners ──► discover ──► vet ──► track (every 15 min) ──► signals ──► dashboard / Telegram
+past runners  early buyers  drop bots   new buys & sells      consensus
+(price history) on 2+ winners & clusters
 ```
 
 ## Setup on Replit (5 minutes)
@@ -16,14 +16,19 @@ winners.txt ──► discover ──► vet ──► track (every 15 min) ─�
    and add `HELIUS_API_KEY`.
 3. Optional phone alerts: create a Telegram bot with @BotFather, then add
    `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as Secrets.
-4. Put 20–40 winning token addresses in `winners.txt`.
-5. In the Shell:
+4. In the Shell:
    ```
    pip install -r requirements.txt
-   python main.py discover     # find early buyers across the winners
-   python main.py vet          # drop bots/clusters, start tracking the best
+   python main.py setup
    ```
-6. Press **Run**. That starts the tracker loop and a dashboard in the webview.
+   `setup` runs three steps (each can also be run on its own):
+   - `winners`: finds past winners from GeckoTerminal's free price history
+     (no key needed). Takes ~10 minutes because of its rate limit.
+   - `discover`: finds wallets that bought those winners early (Helius).
+   - `vet`: drops bots/clusters and starts tracking the best wallets.
+
+   Optional: add your own picks to `winners.txt`; they're included too.
+5. Press **Run**. That starts the tracker loop and a dashboard in the webview.
    To keep it running 24/7, deploy it as a Reserved VM (Deploy → Reserved VM).
 
 Other commands: `python main.py wallets`, `add WALLET [label]`, `remove WALLET`,
@@ -33,7 +38,8 @@ Other commands: `python main.py wallets`, `add WALLET [label]`, `remove WALLET`,
 
 | Step | Rule (all adjustable in `smartmoney/config.py` or as Secrets) |
 |---|---|
-| Early buy | Paid ≥ **5x** below the reference price (`MIN_ENTRY_MULTIPLE`) |
+| Winner | Launched **7–120 days** ago, rose **10x+** from its first-3-day low to its peak, peaked at **$3M+** market cap; max 40, at most 5 per launch week |
+| Early buy | Paid ≥ **5x** below the token's peak price (`MIN_ENTRY_MULTIPLE`) |
 | Not a sniper | Bought > **60 s** after the token's first transaction; the creator is excluded |
 | Real position | ≥ **0.1 SOL** total on that token |
 | Candidate | Early on ≥ **2** winners (`MIN_HITS`; 3 is stricter and better with 30+ winners) |
@@ -59,6 +65,9 @@ Each command prints its estimated credit use.
 
 ## Notes
 
+- Winners come from pools that are still active on GeckoTerminal, so
+  tokens that ran and then fully died are under-represented. Add any you
+  remember to `winners.txt`.
 - Uses Helius `getTransactionsForAddress` (oldest-first history with
   filters). If your key's plan rejects it, the error will say so.
 - Trades are read from balance changes, so any DEX, aggregator or
