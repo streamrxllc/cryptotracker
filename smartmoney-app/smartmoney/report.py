@@ -210,6 +210,14 @@ def render(data):
     return subject, "".join(parts), "\n".join(text), "\n".join(tg)
 
 
+def send_webhook(subject, html_body, text_body, tg, now):
+    r = requests.post(config.REPORT_WEBHOOK_URL, timeout=30, json={
+        "subject": subject, "html": html_body, "text": text_body, "telegram": tg,
+        "date": local_now(now).strftime("%Y-%m-%d")})
+    if r.status_code >= 300:
+        raise RuntimeError(f"Webhook said {r.status_code}: {r.text[:200]}")
+
+
 def email_configured():
     return bool(config.REPORT_EMAIL_TO and (config.RESEND_API_KEY or
                                              (config.SMTP_USER and config.SMTP_PASSWORD)))
@@ -243,6 +251,9 @@ def send(con=None, notify=None, log=print, now=None):
     con = con or db.connect()
     subject, html_body, text_body, tg = render(gather(con, now))
     sent = []
+    if config.REPORT_WEBHOOK_URL:
+        send_webhook(subject, html_body, text_body, tg, now)
+        sent.append("Zapier webhook")
     if email_configured():
         via = send_email(subject, html_body, text_body)
         sent.append(f"email to {config.REPORT_EMAIL_TO} via {via}")

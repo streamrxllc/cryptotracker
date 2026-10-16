@@ -76,6 +76,11 @@ report on the watched wallets: what each one accumulated or sold in the last
 buys/sells, result), and paper-trading results. A short version goes to
 Telegram too.
 
+Setup (Zapier): make a Zap with trigger "Webhooks by Zapier → Catch Hook",
+copy its URL into the Secret `REPORT_WEBHOOK_URL`, run
+`python main.py report --send` once so Zapier sees sample data, then add an
+email action using the `subject` and `html` fields.
+
 Setup (Resend): add Secrets `RESEND_API_KEY`, `REPORT_EMAIL_TO` and, if you
 have a verified domain in Resend, `REPORT_EMAIL_FROM` (e.g.
 `Smart Money <alerts@yourdomain.com>`). Without a verified domain the default

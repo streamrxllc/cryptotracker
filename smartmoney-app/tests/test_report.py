@@ -89,3 +89,21 @@ def test_send_email_via_smtp(tmp_path, monkeypatch):
     report.send(con, None, log=lambda *a: None, now=NOW)
     assert calls["host"] == ("smtp.gmail.com", 465) and calls["login"][0] == "me@gmail.com"
     assert calls["mail"][1] == ["me@gmail.com"] and "Smart money" in calls["mail"][2]
+
+
+def test_send_via_webhook(tmp_path, monkeypatch):
+    con = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "REPORT_WEBHOOK_URL", "https://hooks.zapier.com/hooks/catch/1/abc/")
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
+    monkeypatch.setattr(config, "SMTP_USER", "")
+    got = {}
+
+    class R:
+        status_code, text = 200, "ok"
+    def fake_post(url, timeout, json, **k):
+        got.update(url=url, json=json)
+        return R()
+    monkeypatch.setattr(report.requests, "post", fake_post)
+    report.send(con, None, log=lambda *a: None, now=NOW)
+    assert got["url"].startswith("https://hooks.zapier.com")
+    assert set(got["json"]) == {"subject", "html", "text", "telegram", "date"}

@@ -102,6 +102,9 @@ REPORT_HOUR = _env("report_hour", 8, int)                  # local hour to send
 REPORT_TZ = _env("report_tz", "America/New_York")
 REPORT_LOOKBACK_DAYS = _env("report_lookback_days", 30, float)
 REPORT_EMAIL_TO = _env("report_email_to", "")              # comma-separated
+# Zapier (or any webhook): the report is POSTed as JSON with subject, html,
+# text and telegram fields; build the email in the Zap.
+REPORT_WEBHOOK_URL = _env("report_webhook_url", "")
 # Resend (used when RESEND_API_KEY is set). The From address must be on a
 # domain verified in Resend, or onboarding@resend.dev (only delivers to the
 # email your Resend account is registered with).
