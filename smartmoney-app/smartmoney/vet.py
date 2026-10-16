@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 
 from . import config, db
 from .helius import Helius, HeliusError
-from .parse import account_keys, extract_trades, owner_deltas
+from .parse import account_keys, extract_trades, owner_deltas, signers
 
 
 def tx_rate(sig_rows):
@@ -49,27 +49,36 @@ def assign_clusters(funders, max_size):
     return out
 
 
-def trading_profile(txs, wallet):
+def trading_profile(txs, wallet, exit_share=None):
     """Behaviour from a wallet's recent transactions (any order). Pure function.
 
-    Returns tx_per_day, new_tokens_per_day (distinct tokens bought per day),
-    and median_hold_min (first buy -> first sell, over tokens it sold).
+    - tx_per_day counts only transactions the wallet SIGNED. Active wallets
+      receive lots of spam (dust transfers, airdropped junk tokens) that would
+      otherwise make a human trader look like a bot.
+    - new_tokens_per_day: distinct tokens bought per day.
+    - median_hold_min: minutes from first buy until the wallet had sold
+      `exit_share` (default 75%) of what it bought. Selling half early to
+      "take out initials" is not an exit. Tokens still held are left out.
     """
-    times, first_buy, first_sell = [], {}, {}
-    for tx in txs:
+    exit_share = exit_share or config.EXIT_SHARE
+    times, first_buy, bought, sold, exit_ts = [], {}, {}, {}, {}
+    for tx in sorted(txs, key=lambda t: (t.get("blockTime") or 0, t.get("slot") or 0)):
         ts = int(tx.get("blockTime") or 0)
-        if ts:
+        if ts and wallet in signers(tx):
             times.append(ts)
         for t in extract_trades(tx, wallet):
+            m = t.mint
             if t.side == "buy":
-                first_buy[t.mint] = min(first_buy.get(t.mint, ts), ts)
-            elif t.side == "sell":
-                first_sell[t.mint] = min(first_sell.get(t.mint, ts), ts)
+                first_buy.setdefault(m, ts)
+                bought[m] = bought.get(m, 0.0) + t.token_amount
+            elif t.side == "sell" and m in first_buy:
+                sold[m] = sold.get(m, 0.0) + t.token_amount
+                if m not in exit_ts and sold[m] >= exit_share * bought[m]:
+                    exit_ts[m] = ts
     if len(times) < 2:
         return {"tx_per_day": 0.0, "new_tokens_per_day": 0.0, "median_hold_min": None}
     span_days = max((max(times) - min(times)) / 86400, 1 / 24)
-    holds = [(first_sell[m] - b) / 60 for m, b in first_buy.items()
-             if m in first_sell and first_sell[m] >= b]
+    holds = [(exit_ts[m] - first_buy[m]) / 60 for m in exit_ts]
     return {
         "tx_per_day": len(times) / span_days,
         "new_tokens_per_day": len(first_buy) / span_days,

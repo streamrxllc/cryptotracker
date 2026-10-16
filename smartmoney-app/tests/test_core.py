@@ -124,3 +124,21 @@ def test_trading_profile_and_flags():
     # Spray buyer: 40 different tokens in a few hours.
     txs = [swap("S", -0.2, 100, t0 + i * 300, mint=f"M{i}") for i in range(40)]
     assert vet.flag_for(vet.trading_profile(txs, "S"), cfg).startswith("spray")
+
+
+def test_spam_and_taking_initials_dont_count_against_a_trader():
+    cfg = types.SimpleNamespace(MAX_TX_PER_DAY=400, MAX_NEW_TOKENS_PER_DAY=25,
+                                MIN_MEDIAN_HOLD_MIN=30)
+    t0 = 2_000_000
+    # Takes half off after 5 min, sells the rest 3 hours later.
+    txs = [swap("H", -1, 100, t0, mint="A"), swap("H", 1, -50, t0 + 300, mint="A"),
+           swap("H", 2, -50, t0 + 3 * 3600, mint="A"), swap("H", -1, 10, t0 + 86400, mint="B")]
+    # 2,000 spam transactions sent TO the wallet (signed by someone else).
+    for i in range(2000):
+        spam = swap("SPAMMER", 0.0001, 0, t0 + i * 30, mint="JUNK")
+        spam["transaction"]["message"]["accountKeys"].append({"pubkey": "H", "signer": False})
+        txs.append(spam)
+    prof = vet.trading_profile(txs, "H", exit_share=0.75)
+    assert prof["median_hold_min"] == 180
+    assert prof["tx_per_day"] < 10
+    assert vet.flag_for(prof, cfg) is None

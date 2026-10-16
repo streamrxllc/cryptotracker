@@ -51,7 +51,7 @@ MIN_HITS = _env("min_hits", 3, int)
 
 # --- Vetting: drop bots and wallet clusters --------------------------------
 # Only the strongest candidates (by hits) get vetted; vetting costs ~60 credits each.
-VET_TOP = _env("vet_top", 300, int)
+VET_TOP = _env("vet_top", 600, int)
 VET_RECENT_TXS = _env("vet_recent_txs", 500, int)   # recent history read per wallet
 MAX_TX_PER_DAY = _env("max_tx_per_day", 400, float)
 # "Spray" wallets buy almost every new launch; their hits are volume, not skill.
@@ -59,6 +59,8 @@ MAX_NEW_TOKENS_PER_DAY = _env("max_new_tokens_per_day", 25, float)
 # Wallets that usually sell within minutes can't be copied in time: tracking
 # polls every POLL_MINUTES, so a buy-and-sell inside that window nets to nothing.
 MIN_MEDIAN_HOLD_MIN = _env("min_median_hold_min", 30, float)
+# A position counts as exited once this share of it is sold.
+EXIT_SHARE = _env("exit_share", 0.75, float)
 # A funder shared by more candidates than this is probably an exchange.
 MAX_CLUSTER_SIZE = _env("max_cluster_size", 5, int)
 # How many vetted wallets to start tracking automatically.

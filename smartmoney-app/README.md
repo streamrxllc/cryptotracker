@@ -43,10 +43,10 @@ changing them; costs no credits).
 | Early buy | Paid ≥ **5x** below the token's peak price (`MIN_ENTRY_MULTIPLE`) |
 | Not a sniper | Bought > **60 s** after the token's first transaction; the creator is excluded |
 | Real position | ≥ **0.1 SOL** total on that token |
-| Candidate | Early on ≥ **3** winners (`MIN_HITS`); the top **300** by hits get vetted (`VET_TOP`) |
-| Bot | > **400** transactions/day |
+| Candidate | Early on ≥ **3** winners (`MIN_HITS`); the top **600** by hits get vetted (`VET_TOP`) |
+| Bot | > **400** transactions/day that the wallet itself signed (incoming spam ignored) |
 | Spray buyer | Buys > **25** different tokens/day: hits come from volume, not skill |
-| Quick flipper | Median hold < **30 minutes**: sells before a 15-minute poll could catch the buy |
+| Quick flipper | Median time to sell **75%** of a position < **30 minutes** (taking initials early is fine) |
 | Cluster | Wallets first funded by the same address (2–5 wallets); one is kept |
 | Signal | ≥ **3** tracked wallets net buying the same token within **48 h** |
 | "Adding" | Wallets that bought it more than once (accumulating, not one-shot) |
