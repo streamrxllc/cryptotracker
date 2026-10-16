@@ -1,0 +1,9 @@
+# One Solana token mint address per line: tokens that already ran.
+# Optional second column: the token's PEAK price in USD. Use it when a token
+# has since dumped, otherwise today's price is used as the reference.
+#
+#   <mint address>
+#   <mint address>  0.0042
+#
+# Aim for 20-40 unrelated winners from the last 1-3 months
+# (Dexscreener / GMGN gainers). More winners = better wallet filtering.

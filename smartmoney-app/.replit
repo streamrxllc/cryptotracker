@@ -1,0 +1,11 @@
+run = "pip install -q -r requirements.txt && python main.py serve"
+entrypoint = "main.py"
+modules = ["python-3.11"]
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[deployment]
+run = ["sh", "-c", "pip install -q -r requirements.txt && python main.py serve"]
+deploymentTarget = "vm"

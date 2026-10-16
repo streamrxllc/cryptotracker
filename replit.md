@@ -1,19 +1,26 @@
-# [Project name]
+# Solana Smart-Money Tracker
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Tracks Solana wallets that bought past winners early and reports consensus accumulation signals. The imported app is read-only and does not execute trades.
 
 ## Run & Operate
 
+- `cd smartmoney-app && PORT=8000 python main.py serve` — dashboard and polling workflow
+- `cd smartmoney-app && python main.py discover` — discover early buyers from `winners.txt`
+- `cd smartmoney-app && python main.py vet` — filter candidates and choose wallets to track
+- `cd smartmoney-app && python main.py wallets` — list discovered and tracked wallets
+- `cd smartmoney-app && python main.py track --once` — run one polling cycle
+- Required secret: `HELIUS_API_KEY`
+- Optional alert secrets: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
+- Python 3.11, Flask, requests, and SQLite for the imported tracker
+- pnpm workspaces, Node.js 24, TypeScript 5.9 for the shared project services
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
@@ -22,23 +29,29 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `smartmoney-app/` — imported Python app, dashboard, SQLite database, and tests
+- `smartmoney-app/winners.txt` — input addresses used by discovery
+- `smartmoney-app/README.md` — setup and tracker behavior
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Keep the supplied tracker source and behavior intact; run it as a separate Python workflow.
+- The tracker reads public chain data and emits signals only; it has no wallet signing or transaction-submission path.
+- The tracker uses its supplied SQLite database and local `winners.txt`; no database migration is needed.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Discovers wallets that bought previous winners early, filters bots and clusters, monitors wallet activity, and highlights tokens with multiple tracked wallets accumulating. It can optionally send Telegram alerts.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Use the attached Python app as supplied.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Add token addresses to `smartmoney-app/winners.txt`, then run `discover` and `vet` before expecting tracked-wallet signals.
+- Port 8000 is used for the tracker because the shared API service already uses port 8080.
+- Helius and Telegram credentials belong in Replit Secrets, never in source files.
 
 ## Pointers
 
