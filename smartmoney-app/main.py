@@ -10,6 +10,7 @@
   python main.py wallets             list candidates and tracked wallets
   python main.py track --once        one polling cycle, print signals
   python main.py paper               paper-trading results so far
+  python main.py review [--days 7]   each tracked wallet's % gains, and coins they shared
   python main.py serve               dashboard + tracker loop (Replit's Run button)
 """
 import argparse
@@ -33,6 +34,7 @@ def main(argv=None):
     t = sub.add_parser("track"); t.add_argument("--once", action="store_true")
     sub.add_parser("serve")
     sub.add_parser("paper")
+    rv = sub.add_parser("review"); rv.add_argument("--days", type=float, default=7)
     args = ap.parse_args(argv)
 
     if args.cmd == "setup":
@@ -68,6 +70,9 @@ def main(argv=None):
             tracker.cycle(Helius(), db.connect())
         else:
             tracker.loop()
+    elif args.cmd == "review":
+        from smartmoney import review
+        review.run(days=args.days)
     elif args.cmd == "paper":
         from smartmoney import paper
         paper.print_summary()
