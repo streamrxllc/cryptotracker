@@ -76,6 +76,25 @@ MIN_BUY_SOL = _env("min_buy_sol", 0.05, float)
 LATE_PCT_24H = _env("late_pct_24h", 300.0, float)
 ALERT_COOLDOWN_HOURS = _env("alert_cooldown_hours", 12, float)
 
+# --- Accumulation alerts -------------------------------------------------------
+# Wallets whose repeat buying you want pinged about (comma-separated in Secrets).
+# Defaults: the three tracked wallets that made money in the Oct 16 review.
+WATCH_WALLETS = [w.strip() for w in _env(
+    "watch_wallets",
+    "D9Jibi4oneM46vCjF2qq8Azc2kPxCTfJKi6i5uMnz8Aq,"
+    "6uu3hHQinzVRFvpdy7m44RM8w221ACDxqXpmvLiLUFd6,"
+    "AmpmyC9C7k9eKpPHt7N2qPR5cDPmrv1mQPjKjz7xZqRw").split(",") if w.strip()]
+ACCUM_MILESTONES = [int(x) for x in _env("accum_milestones", "3,5,8").split(",")]
+ACCUM_WINDOW_HOURS = _env("accum_window_hours", 72, float)
+ACCUM_MIN_BUY_SOL = _env("accum_min_buy_sol", 0.5, float)   # ignore dust buys
+# Staked SOL and similar: steady buying here isn't memecoin accumulation.
+NON_MEME_MINTS = {
+    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   # mSOL
+    "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",  # JitoSOL
+    "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",   # bSOL
+    "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",   # JupSOL
+}
+
 # --- Paper trading (fake money, scored like real trades) ----------------------
 PAPER_SIZE_USD = _env("paper_size_usd", 100, float)
 PAPER_SLIPPAGE_PCT = _env("paper_slippage_pct", 3, float)      # per side, incl. fees

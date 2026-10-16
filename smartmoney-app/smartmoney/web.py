@@ -5,7 +5,7 @@ import time
 
 from flask import Flask, jsonify
 
-from . import config, db, paper, tracker
+from . import accumulation, config, db, paper, tracker
 
 app = Flask(__name__)
 
@@ -37,6 +37,9 @@ def index():
         f"<td>{s.get('change_h24') if s.get('change_h24') is not None else '–'}%</td>"
         f"<td>{_ago(s['last_buy'])}</td></tr>"
         for s in st["signals"]) or "<tr><td colspan=7>No consensus yet.</td></tr>"
+    al = accumulation.recent(con)
+    arows = "".join(f"<li>{_ago(a['sent_at'])}: {html.escape(a['text'].splitlines()[0])}</li>"
+                    for a in al) or "<li>None yet. Fires when a watched wallet makes buy #3, #5 or #8 on a token, or starts selling one.</li>"
     ps = paper.summary(con)
     def prow(r):
         cls = "up" if r["pnl_pct"] > 0 else "down"
@@ -61,6 +64,8 @@ th,td{{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}}
 th{{color:var(--mut);font-weight:500;font-size:12px}} tr.late{{background:var(--warn)}}
 a{{color:inherit}} .up{{color:#1a7f37}} .down{{color:#cf222e}} .mut{{color:var(--mut);font-size:13px}} .wrap{{overflow-x:auto}}
 </style>
+<h2>Accumulation alerts</h2>
+<ul class=mut>{arows}</ul>
 <h2>Consensus buys</h2>
 <p class=mut>Tokens {tracker.config.MIN_WALLETS_FOR_SIGNAL}+ tracked wallets are net buying in the last
 {tracker.config.SIGNAL_WINDOW_HOURS:g}h. Last check: {_ago(st['last_cycle'])}.

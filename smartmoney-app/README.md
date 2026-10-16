@@ -55,6 +55,19 @@ changing them; costs no credits).
 The signal score weights each buyer by how many winners they were early on,
 and subtracts half a point for each tracked wallet that is net selling.
 
+## Accumulation alerts
+
+Watched wallets (`WATCH_WALLETS`, comma-separated; defaults to D9Ji…, 6uu3…
+and Ampm…, the ones that made money in the first review) trigger a Telegram
+alert and a dashboard entry when, within 72 hours, they:
+
+- make their **3rd, 5th or 8th** buy (0.5 SOL+) of the same token, and
+- **start selling** a token they had bought 3+ times (your exit signal).
+
+Each alert fires once. Staked-SOL tokens (mSOL, JitoSOL…) are ignored.
+Alerts need the tracker running (Run button, or a Reserved VM for 24/7)
+and the Telegram secrets set.
+
 ## Paper trading
 
 Every signal automatically opens a fake $100 position (`PAPER_SIZE_USD`) at

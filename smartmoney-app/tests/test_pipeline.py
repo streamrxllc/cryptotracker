@@ -42,6 +42,7 @@ def test_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "WINNERS_FILE", str(winners))
     monkeypatch.setattr(config, "EXPENSIVE_RUN_STOP", 100)
     monkeypatch.setattr(config, "MIN_HITS", 2)
+    monkeypatch.setattr(config, "WATCH_WALLETS", [])
     for mod in (discover, vet):
         monkeypatch.setattr(mod, "Helius", FakeHelius)
     monkeypatch.setattr(dexscreener, "best_pairs", fake_pairs)
