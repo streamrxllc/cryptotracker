@@ -210,9 +210,29 @@ def render(data):
     return subject, "".join(parts), "\n".join(text), "\n".join(tg)
 
 
-def send_webhook(subject, html_body, text_body, tg, now):
+def sms_text(data, limit=153):
+    """One plain-ASCII line for SMS (SMS by Zapier cuts at 153 characters)."""
+    pos = data["positions"]
+    acc = sorted([p for p in pos if p["status"] != "closed" and p["recent"]["buys"]
+                  and not p["recent"]["sells"]], key=lambda p: -p["recent"]["sol_buy"])
+    sell = [p for p in pos if p["recent"]["sells"]]
+    head = f"SmartMoney {local_now(data['now']).strftime('%m/%d')}:"
+    items = [f"SELL {p['wallet'][:4]} {p['symbol']}" for p in sell] + \
+            [f"BUY {p['wallet'][:4]} {p['symbol']} x{p['recent']['buys']}" for p in acc]
+    if not items:
+        return f"{head} no new buys or sells in 24h"
+    out = head
+    for i, it in enumerate(items):
+        extra = f" +{len(items) - i} more" if i < len(items) else ""
+        if len(out) + len(it) + 2 + len(" +99 more") > limit:
+            return (out + extra)[:limit]
+        out += (" " if out == head else ", ") + it
+    return out[:limit]
+
+
+def send_webhook(subject, html_body, text_body, tg, now, sms=""):
     r = requests.post(config.REPORT_WEBHOOK_URL, timeout=30, json={
-        "subject": subject, "html": html_body, "text": text_body, "telegram": tg,
+        "subject": subject, "html": html_body, "text": text_body, "telegram": tg, "sms": sms,
         "date": local_now(now).strftime("%Y-%m-%d")})
     if r.status_code >= 300:
         raise RuntimeError(f"Webhook said {r.status_code}: {r.text[:200]}")
@@ -249,10 +269,11 @@ def send_email(subject, html_body, text_body):
 
 def send(con=None, notify=None, log=print, now=None):
     con = con or db.connect()
-    subject, html_body, text_body, tg = render(gather(con, now))
+    data = gather(con, now)
+    subject, html_body, text_body, tg = render(data)
     sent = []
     if config.REPORT_WEBHOOK_URL:
-        send_webhook(subject, html_body, text_body, tg, now)
+        send_webhook(subject, html_body, text_body, tg, now, sms_text(data))
         sent.append("Zapier webhook")
     if email_configured():
         via = send_email(subject, html_body, text_body)

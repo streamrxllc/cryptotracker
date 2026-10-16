@@ -79,7 +79,10 @@ Telegram too.
 Setup (Zapier): make a Zap with trigger "Webhooks by Zapier → Catch Hook",
 copy its URL into the Secret `REPORT_WEBHOOK_URL`, run
 `python main.py report --send` once so Zapier sees sample data, then add an
-email action using the `subject` and `html` fields.
+email action using the `subject` and `html` fields. For a text message
+instead, use "SMS by Zapier" with the `sms` field: a single line of 153
+characters or fewer, e.g. `SmartMoney 10/17: SELL 6uu3 FTR, BUY D9Ji NORMIE x5`
+(US/UK numbers; not T-Mobile).
 
 Setup (Resend): add Secrets `RESEND_API_KEY`, `REPORT_EMAIL_TO` and, if you
 have a verified domain in Resend, `REPORT_EMAIL_FROM` (e.g.

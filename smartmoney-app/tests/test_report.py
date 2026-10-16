@@ -106,4 +106,15 @@ def test_send_via_webhook(tmp_path, monkeypatch):
     monkeypatch.setattr(report.requests, "post", fake_post)
     report.send(con, None, log=lambda *a: None, now=NOW)
     assert got["url"].startswith("https://hooks.zapier.com")
-    assert set(got["json"]) == {"subject", "html", "text", "telegram", "date"}
+    assert set(got["json"]) == {"subject", "html", "text", "telegram", "sms", "date"}
+    sms = got["json"]["sms"]
+    assert len(sms) <= 153 and sms.isascii()
+    assert "SELL 6uu3 FTR" in sms and "BUY D9Ji NORMIE x5" in sms
+
+
+def test_sms_truncates_cleanly(tmp_path, monkeypatch):
+    con = setup(tmp_path, monkeypatch)
+    data = report.gather(con, NOW)
+    many = [dict(data["positions"][0], symbol=f"TOKEN{i:02d}LONGNAME") for i in range(20)]
+    sms = report.sms_text({**data, "positions": many})
+    assert len(sms) <= 153 and sms.endswith("more")
