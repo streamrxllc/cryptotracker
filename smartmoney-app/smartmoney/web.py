@@ -1,13 +1,92 @@
-"""Tiny phone-friendly dashboard served by Replit's webview."""
+"""Password-protected dashboard. Home page = the accumulation report."""
+import hashlib
+import hmac
 import html
 import threading
 import time
+from datetime import timedelta
+from functools import wraps
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, redirect, request, session
+from flask.sessions import SecureCookieSessionInterface
 
-from . import accumulation, config, db, paper, tracker
+from . import accumulation, config, db, paper, report, tracker
 
 app = Flask(__name__)
+app.permanent_session_lifetime = timedelta(days=30)
+_cache = {"at": 0, "html": "", "subject": ""}
+
+
+def _secret():
+    # Derived from the password, so changing the password logs everyone out.
+    return hashlib.sha256(("smartmoney-session:" + config.DASHBOARD_PASSWORD).encode()).hexdigest()
+
+
+class _PasswordKeyedSessions(SecureCookieSessionInterface):
+    """Sign session cookies with a key derived from the current password.
+    (Set here, not in before_request: Flask opens the session before that runs.)"""
+
+    def get_signing_serializer(self, app_):
+        app_.secret_key = _secret()
+        return super().get_signing_serializer(app_)
+
+
+app.session_interface = _PasswordKeyedSessions()
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*a, **k):
+        if not config.DASHBOARD_PASSWORD:
+            return (PAGE.format(title="Set a password", body=(
+                "<h2>Set a dashboard password</h2><p>Add a Replit Secret named "
+                "<code>DASHBOARD_PASSWORD</code>, then restart the tracker.</p>")), 403)
+        if session.get("ok") != _secret()[:16]:
+            return redirect("/login")
+        return view(*a, **k)
+    return wrapped
+
+
+PAGE = """<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>{title}</title><style>
+body{{font:15px -apple-system,Segoe UI,sans-serif;background:#fff;color:#111;margin:0 auto;
+padding:16px;max-width:1000px}}
+table{{border-collapse:collapse;font-variant-numeric:tabular-nums}}
+.rep table,.wrap{{display:block;overflow-x:auto;white-space:nowrap}}
+th,td{{text-align:left;padding:6px 4px;border-bottom:1px solid #e5e5e5}}
+th{{color:#666;font-weight:500;font-size:12px}} tr.late{{background:#fff4e5}}
+a{{color:inherit}} .up{{color:#1a7f37}} .down{{color:#cf222e}}
+.mut{{color:#666;font-size:13px}} .bar{{display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+justify-content:space-between;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:12px}}
+input,button{{font:inherit;padding:10px;border:1px solid #ccc;border-radius:8px}}
+button{{background:#111;color:#fff;border-color:#111;cursor:pointer}}
+details{{margin-top:28px}} summary{{cursor:pointer;font-weight:600;font-size:17px}}
+</style></head><body>{body}</body></html>"""
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    err = ""
+    if request.method == "POST":
+        if config.DASHBOARD_PASSWORD and hmac.compare_digest(
+                request.form.get("password", ""), config.DASHBOARD_PASSWORD):
+            session.permanent = True
+            session["ok"] = _secret()[:16]
+            return redirect("/")
+        time.sleep(1.5)  # slow down guessing
+        err = "<p class=down>Wrong password.</p>"
+    return PAGE.format(title="Smart Money · Sign in", body=f"""
+<form method=post style="max-width:320px;margin:15vh auto;display:grid;gap:10px">
+<h2 style="margin:0">Smart Money</h2>{err}
+<input type=password name=password placeholder=Password autofocus autocomplete=current-password>
+<button>Sign in</button></form>""")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 
 def _ago(ts):
@@ -18,14 +97,27 @@ def _ago(ts):
 
 
 @app.route("/api/signals")
+@login_required
 def api_signals():
     return jsonify(tracker.STATE)
 
 
+def _report_html(con):
+    """Rebuild the report at most once a minute (prices come from Dexscreener)."""
+    if time.time() - _cache["at"] > 60 or request.args.get("refresh"):
+        subject, body, _, _ = report.render(report.gather(con))
+        _cache.update(at=time.time(), html=body, subject=subject)
+    return _cache["html"]
+
+
 @app.route("/")
+@login_required
 def index():
     con = db.connect()
     st = tracker.STATE
+    rep = _report_html(con)
+    nxt = (st["last_cycle"] + config.POLL_MINUTES * 60 - time.time()) / 60 \
+        if st["last_cycle"] else None
     tracked = con.execute("""SELECT address, label, hits, avg_multiple FROM wallets
                              WHERE tracked=1 ORDER BY hits DESC""").fetchall()
     rows = "".join(
@@ -53,33 +145,29 @@ def index():
     wl = "".join(
         f"<li><a href='https://solscan.io/account/{w['address']}'>{w['label'] or w['address'][:6] + '…' + w['address'][-4:]}</a>"
         f" · {w['hits'] or 0} hits</li>" for w in tracked)
-    return f"""<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Smart Money</title>
-<style>
-:root{{--bg:#fff;--fg:#111;--mut:#666;--line:#e5e5e5;--warn:#fff4e5}}
-@media (prefers-color-scheme:dark){{:root{{--bg:#111;--fg:#eee;--mut:#999;--line:#333;--warn:#3a2a10}}}}
-body{{font:15px system-ui;background:var(--bg);color:var(--fg);margin:0;padding:16px;max-width:900px}}
-table{{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}}
-th,td{{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}}
-th{{color:var(--mut);font-weight:500;font-size:12px}} tr.late{{background:var(--warn)}}
-a{{color:inherit}} .up{{color:#1a7f37}} .down{{color:#cf222e}} .mut{{color:var(--mut);font-size:13px}} .wrap{{overflow-x:auto}}
-</style>
-<h2>Accumulation alerts</h2>
-<ul class=mut>{arows}</ul>
-<h2>Consensus buys</h2>
-<p class=mut>Tokens {tracker.config.MIN_WALLETS_FOR_SIGNAL}+ tracked wallets are net buying in the last
-{tracker.config.SIGNAL_WINDOW_HOURS:g}h. Last check: {_ago(st['last_cycle'])}.
-{('Error: ' + html.escape(st['last_error'])) if st['last_error'] else ''}</p>
-<div class=wrap><table><tr><th>Token</th><th>Wallets</th><th>Adding</th><th>Net SOL</th>
-<th>MCap</th><th>24h</th><th>Last buy</th></tr>{rows}</table></div>
-<p class=mut>⚠️ = already up {tracker.config.LATE_PCT_24H:g}%+ in 24h. Not financial advice; verify on-chain before buying.</p>
-<h2>Paper trades</h2>
+    body = f"""
+<div class=bar><div><b>Smart Money</b> <span class=mut>· wallets checked {_ago(st['last_cycle'])}
+{f"· next check in {max(nxt, 0):.0f} min" if nxt is not None else "· tracker starting…"}
+{(' · <span class=down>error: ' + html.escape(st['last_error']) + '</span>') if st['last_error'] else ''}</span></div>
+<div class=mut><a href="/?refresh=1">Refresh prices</a> · <a href="/logout">Sign out</a></div></div>
+<div class=rep>{rep}</div>
+<details open><summary>Alerts</summary>
+<ul class=mut>{arows}</ul></details>
+<details><summary>Paper trades · realized ${ps['realized_usd']:+,.0f}, open ${ps['unrealized_usd']:+,.0f}</summary>
 <p class=mut>${config.PAPER_SIZE_USD:g} per signal, {config.PAPER_SLIPPAGE_PCT:g}% slippage each way.
-Realized <b>${ps['realized_usd']:+,.0f}</b> on {len(ps['closed'])} closed (win rate {wr}) ·
-open <b>${ps['unrealized_usd']:+,.0f}</b> on {len(ps['open'])}.</p>
+{len(ps['closed'])} closed (win rate {wr}) · {len(ps['open'])} open.</p>
 <div class=wrap><table><tr><th>Token</th><th>P&amp;L</th><th>$</th><th>Status</th><th>Opened</th></tr>
-{prows}</table></div>
-<h3>Tracked wallets ({len(tracked)})</h3><ul class=mut>{wl}</ul>"""
+{prows}</table></div></details>
+<details><summary>Consensus buys ({len(st['signals'])})</summary>
+<p class=mut>Tokens {config.MIN_WALLETS_FOR_SIGNAL}+ tracked wallets are net buying in the last
+{config.SIGNAL_WINDOW_HOURS:g}h. ⚠️ = already up {config.LATE_PCT_24H:g}%+ in 24h.</p>
+<div class=wrap><table><tr><th>Token</th><th>Wallets</th><th>Adding</th><th>Net SOL</th>
+<th>MCap</th><th>24h</th><th>Last buy</th></tr>{rows}</table></div></details>
+<details><summary>Tracked wallets ({len(tracked)})</summary><ul class=mut>{wl}</ul></details>
+<p class=mut style="margin-top:24px">Wallet trades update every {config.POLL_MINUTES:g} minutes; prices
+on each refresh. This page reloads itself every 5 minutes. Not financial advice.</p>"""
+    return PAGE.format(title="Smart Money", body=body).replace(
+        "<head>", "<head><meta http-equiv=refresh content=300>", 1)
 
 
 def serve(port, log=print):

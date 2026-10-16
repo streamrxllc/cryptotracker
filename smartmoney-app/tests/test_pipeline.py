@@ -60,7 +60,10 @@ def test_pipeline(tmp_path, monkeypatch):
     assert picked == {"W1", "W2", "W3"}
     sigs = tracker.cycle(FakeHelius(), con, log=out.append)
     assert sigs and sigs[0]["mint"] == "Zzz" and sigs[0]["wallets"] == 3
-    page = web.app.test_client().get("/").data.decode()
+    monkeypatch.setattr(config, "DASHBOARD_PASSWORD", "pw")
+    client = web.app.test_client()
+    client.post("/login", data={"password": "pw"})
+    page = client.get("/").data.decode()
     assert "Zzz"[:4] in page and "Tracked wallets (3)" in page
     assert "Paper trades" in page and "PAPER BUY" in "\n".join(out)
     print("\n".join(out))

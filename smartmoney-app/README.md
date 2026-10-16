@@ -68,6 +68,18 @@ Each alert fires once. Staked-SOL tokens (mSOL, JitoSOL…) are ignored.
 Alerts need the tracker running (Run button, or a Reserved VM for 24/7)
 and the Telegram secrets set.
 
+## Dashboard (home page)
+
+The home page is the accumulation report: the Accumulation board (positions
+watched wallets bought 2+ times, with a 7-day buys-per-day strip), 24-hour
+buys and sells, tokens held by 2+ wallets, and each wallet's open positions.
+Alerts, paper trades, consensus buys and tracked wallets are below it.
+
+It's password-protected: set the Secret `DASHBOARD_PASSWORD`. Sign-in lasts
+30 days; changing the password signs everyone out. Wallet trades update every
+`POLL_MINUTES` (15); prices refresh on load (cached 1 minute); the page
+reloads itself every 5 minutes.
+
 ## Daily morning report (email)
 
 Every day at 8am New York time (`REPORT_HOUR`, `REPORT_TZ`) the tracker emails a

@@ -129,6 +129,7 @@ PAPER_REENTRY_HOURS = _env("paper_reentry_hours", 24, float)   # no re-buy right
 # --- Networking ---------------------------------------------------------------
 REQUESTS_PER_SECOND = _env("requests_per_second", 5.0, float)
 PORT = _env("port", 8080, int)
+DASHBOARD_PASSWORD = _env("dashboard_password", "")   # required to view the dashboard
 
 # Mints treated as "money" rather than as the asset being accumulated.
 WSOL = "So11111111111111111111111111111111111111112"
