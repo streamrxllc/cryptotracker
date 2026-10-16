@@ -97,6 +97,16 @@ NON_MEME_MINTS = {
     "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",   # JupSOL
 }
 
+# --- Daily email report -------------------------------------------------------
+REPORT_HOUR = _env("report_hour", 8, int)                  # local hour to send
+REPORT_TZ = _env("report_tz", "America/New_York")
+REPORT_LOOKBACK_DAYS = _env("report_lookback_days", 30, float)
+REPORT_EMAIL_TO = _env("report_email_to", "")              # comma-separated
+SMTP_USER = _env("smtp_user", "")                          # e.g. you@gmail.com
+SMTP_PASSWORD = _env("smtp_password", "")                  # Gmail app password
+SMTP_HOST = _env("smtp_host", "smtp.gmail.com")
+SMTP_PORT = _env("smtp_port", 465, int)
+
 # --- Paper trading (fake money, scored like real trades) ----------------------
 PAPER_SIZE_USD = _env("paper_size_usd", 100, float)
 PAPER_SLIPPAGE_PCT = _env("paper_slippage_pct", 3, float)      # per side, incl. fees

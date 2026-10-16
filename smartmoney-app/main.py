@@ -11,6 +11,7 @@
   python main.py track --once        one polling cycle, print signals
   python main.py paper               paper-trading results so far
   python main.py test-alert          send a test Telegram message
+  python main.py report [--send]     daily holdings/accumulation report (print, or email it now)
   python main.py backtest            test "copy at a wallet's Nth buy" on stored trades (no credits)
   python main.py review [--days 7]   each tracked wallet's % gains, and coins they shared
   python main.py serve               dashboard + tracker loop (Replit's Run button)
@@ -37,6 +38,7 @@ def main(argv=None):
     sub.add_parser("serve")
     sub.add_parser("paper")
     sub.add_parser("test-alert")
+    rp = sub.add_parser("report"); rp.add_argument("--send", action="store_true")
     sub.add_parser("backtest")
     rv = sub.add_parser("review"); rv.add_argument("--days", type=float, default=7)
     args = ap.parse_args(argv)
@@ -80,6 +82,12 @@ def main(argv=None):
     elif args.cmd == "backtest":
         from smartmoney import backtest
         backtest.run()
+    elif args.cmd == "report":
+        from smartmoney import report, tracker
+        if args.send:
+            report.send(notify=tracker.notify)
+        else:
+            print(report.render(report.gather(db.connect()))[2])
     elif args.cmd == "test-alert":
         import requests
         if not (config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID):

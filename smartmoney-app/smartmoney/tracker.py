@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from . import accumulation, config, db, dexscreener, paper, signals
+from . import accumulation, config, db, dexscreener, paper, report, signals
 from .helius import Helius, HeliusError
 from .parse import extract_trades
 
@@ -103,6 +103,10 @@ def cycle(hel, con, log=print):
         accumulation.check(con, notify, log)
     except Exception as e:  # alerts must never stop tracking
         log(f"accumulation alert error: {e}")
+    try:
+        report.maybe_send_daily(con, notify, log)
+    except Exception as e:
+        log(f"daily report error: {e}")
     sol_usd = dexscreener.sol_usd()
     sigs = current_signals(con, sol_usd)
     send_alerts(con, sigs, log)

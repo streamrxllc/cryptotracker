@@ -68,6 +68,20 @@ Each alert fires once. Staked-SOL tokens (mSOL, JitoSOL…) are ignored.
 Alerts need the tracker running (Run button, or a Reserved VM for 24/7)
 and the Telegram secrets set.
 
+## Daily morning report (email)
+
+Every day at 8am New York time (`REPORT_HOUR`, `REPORT_TZ`) the tracker emails a
+report on the watched wallets: what each one accumulated or sold in the last
+24 hours, tokens held by 2+ of them, every open position (put in, worth now,
+buys/sells, result), and paper-trading results. A short version goes to
+Telegram too.
+
+Setup (Gmail): turn on 2-Step Verification, create an app password at
+myaccount.google.com/apppasswords, then add Secrets `SMTP_USER` (your Gmail
+address), `SMTP_PASSWORD` (the 16-character app password) and
+`REPORT_EMAIL_TO` (where to send it). Test with `python main.py report --send`;
+preview in the Shell with `python main.py report`.
+
 ## Paper trading
 
 Every signal automatically opens a fake $100 position (`PAPER_SIZE_USD`) at
