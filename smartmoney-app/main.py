@@ -54,6 +54,8 @@ def main(argv=None):
     sc.add_argument("--min-trades", type=int, default=5)
     sc.add_argument("--max-trades", type=int, default=40)
     sc.add_argument("--min-win", type=float, default=0.9)
+    sc.add_argument("--wallets", nargs="*", default=None,
+                    help="patient: profile just these wallets instead of the discovery pool")
     sc.add_argument("--max-tx", type=int, default=300,
                     help="patient: most transactions a wallet may make in the window")
     sc.add_argument("--min-hits", type=int, default=2,
@@ -100,7 +102,9 @@ def main(argv=None):
     elif args.cmd == "scout":
         from smartmoney import scout
         if args.profile == "patient":
-            scout.run_patient(days=args.days or 60, min_hits=args.min_hits, max_tx=args.max_tx,
+            scout.run_patient(days=args.days or 60, min_hits=args.min_hits,
+                              max_tx=args.max_tx if not args.wallets else max(args.max_tx, 3000),
+                              wallets=args.wallets,
                               min_win=args.min_win if args.min_win != 0.9 else 0.8)
         else:
             scout.run(days=args.days or 30, top=args.top, min_trades=args.min_trades,

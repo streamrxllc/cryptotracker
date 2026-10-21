@@ -228,10 +228,10 @@ def patient_profile(trades, rows, days):
 
 
 def run_patient(days=60, min_hits=2, max_tx=300, max_tokens_per_week=3, min_decided=3,
-                min_win=0.8, min_accum=0.5, log=print, csv_path="patient.csv"):
+                min_win=0.8, min_accum=0.5, log=print, csv_path="patient.csv", wallets=None):
     con = db.connect()
     hel = Helius()
-    pool = [r[0] for r in con.execute(
+    pool = list(wallets) if wallets else [r[0] for r in con.execute(
         """SELECT wallet FROM discovery_hits GROUP BY wallet HAVING COUNT(*) >= ?
            ORDER BY COUNT(*) DESC, AVG(avg_multiple) DESC""", (min_hits,))]
     if not pool:
