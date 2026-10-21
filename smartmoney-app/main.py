@@ -13,6 +13,7 @@
   python main.py test-alert          send a test Telegram message
   python main.py report [--send]     daily holdings/accumulation report (print, or email it now)
   python main.py backtest            test "copy at a wallet's Nth buy" on stored trades (no credits)
+  python main.py scout [--days 30]   find few-trade wallets winning 90%+, and the groups they trade in
   python main.py review [--days 7]   each tracked wallet's % gains, and coins they shared
   python main.py serve               dashboard + tracker loop (Replit's Run button)
 """
@@ -40,6 +41,12 @@ def main(argv=None):
     sub.add_parser("test-alert")
     rp = sub.add_parser("report"); rp.add_argument("--send", action="store_true")
     sub.add_parser("backtest")
+    sc = sub.add_parser("scout")
+    sc.add_argument("--days", type=float, default=30)
+    sc.add_argument("--top", type=int, default=300)
+    sc.add_argument("--min-trades", type=int, default=5)
+    sc.add_argument("--max-trades", type=int, default=40)
+    sc.add_argument("--min-win", type=float, default=0.9)
     rv = sub.add_parser("review"); rv.add_argument("--days", type=float, default=7)
     args = ap.parse_args(argv)
 
@@ -79,6 +86,10 @@ def main(argv=None):
     elif args.cmd == "review":
         from smartmoney import review
         review.run(days=args.days)
+    elif args.cmd == "scout":
+        from smartmoney import scout
+        scout.run(days=args.days, top=args.top, min_trades=args.min_trades,
+                  max_trades=args.max_trades, min_win=args.min_win)
     elif args.cmd == "backtest":
         from smartmoney import backtest
         backtest.run()
