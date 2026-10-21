@@ -92,6 +92,26 @@ def message(wallet, kind, info, tok, sol_usd):
             f"{tok.get('url') or ''}")
 
 
+def seed(con, wallets, now=None):
+    """Record existing milestones for these wallets without alerting (used
+    after loading a wallet's history, so old buys/sells don't fire alerts)."""
+    con.executescript(SCHEMA)
+    now = now or int(time.time())
+    if not wallets:
+        return 0
+    q = ",".join("?" * len(wallets))
+    rows = [dict(r) for r in con.execute(
+        f"SELECT * FROM trades WHERE wallet IN ({q}) AND ts >= ?",
+        list(wallets) + [now - config.ACCUM_SELL_LOOKBACK_DAYS * 86400])]
+    evs = events(rows, config.ACCUM_MILESTONES, now, config.ACCUM_WINDOW_HOURS,
+                 config.ACCUM_MIN_BUY_SOL, config.NON_MEME_MINTS | config.QUOTE_MINTS,
+                 sell_lookback_hours=config.ACCUM_SELL_LOOKBACK_DAYS * 24)
+    con.executemany("INSERT OR IGNORE INTO accum_alerts VALUES (?,?,?,?,?)",
+                    [(w, m, k, now, "seeded") for w, m, k, _ in evs])
+    con.commit()
+    return len(evs)
+
+
 def check(con, notify, log=print, now=None):
     """Send any new accumulation alerts. Returns the messages sent."""
     con.executescript(SCHEMA)

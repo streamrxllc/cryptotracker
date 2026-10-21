@@ -68,7 +68,10 @@ AUTO_TRACK_TOP = _env("auto_track_top", 40, int)
 
 # --- Tracking & signals -----------------------------------------------------
 POLL_MINUTES = _env("poll_minutes", 15, float)
-BACKFILL_HOURS = _env("backfill_hours", 24, float)  # history pulled for a newly tracked wallet
+BACKFILL_HOURS = _env("backfill_hours", 24, float)  # first poll of a new wallet
+# Watched wallets also get this much history loaded once, so the dashboard
+# shows positions they built before we started watching.
+WATCH_BACKFILL_DAYS = _env("watch_backfill_days", 60, float)
 SIGNAL_WINDOW_HOURS = _env("signal_window_hours", 48, float)
 MIN_WALLETS_FOR_SIGNAL = _env("min_wallets_for_signal", 3, int)
 MIN_BUY_SOL = _env("min_buy_sol", 0.05, float)
@@ -106,7 +109,7 @@ NON_MEME_MINTS = {
 # --- Daily email report -------------------------------------------------------
 REPORT_HOUR = _env("report_hour", 8, int)                  # local hour to send
 REPORT_TZ = _env("report_tz", "America/New_York")
-REPORT_LOOKBACK_DAYS = _env("report_lookback_days", 30, float)
+REPORT_LOOKBACK_DAYS = _env("report_lookback_days", 60, float)
 REPORT_EMAIL_TO = _env("report_email_to", "")              # comma-separated
 # Zapier (or any webhook): the report is POSTed as JSON with subject, html,
 # text and telegram fields; build the email in the Zap.

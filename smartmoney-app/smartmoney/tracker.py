@@ -85,6 +85,35 @@ def send_alerts(con, sigs, log=print):
             log(f"telegram alert failed: {e}")
 
 
+def backfill_watched(hel, con, log=print, now=None):
+    """Load WATCH_BACKFILL_DAYS of history once per watched wallet."""
+    con.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+    now = now or int(time.time())
+    done = []
+    for w in config.WATCH_WALLETS:
+        key = f"backfill:{w}:{config.WATCH_BACKFILL_DAYS:g}"
+        if con.execute("SELECT 1 FROM meta WHERE k=?", (key,)).fetchone():
+            continue
+        trades = []
+        try:
+            for tx in hel.transactions(w, order="desc", full=True, limit=100, max_txs=3000,
+                                       filters={"blockTime": {"gte": int(now - config.WATCH_BACKFILL_DAYS * 86400)},
+                                                "status": "succeeded"}):
+                trades += extract_trades(tx, w)
+        except HeliusError as e:
+            log(f"   backfill {w[:8]}… failed, will retry: {e}")
+            continue
+        db.insert_trades(con, trades)
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, str(now)))
+        con.commit()
+        done.append(w)
+        log(f"   loaded {config.WATCH_BACKFILL_DAYS:g} days of history for {w[:4]}…{w[-4:]} "
+            f"({len(trades)} trades)")
+    if done:
+        accumulation.seed(con, done, now)   # old buys/sells shouldn't fire alerts
+    return done
+
+
 def sync_watch_list(con, log=print):
     """With TRACK_ONLY_WATCHED, stop tracking anything not on WATCH_WALLETS."""
     ws = [w for w in config.WATCH_WALLETS if w]
@@ -107,6 +136,10 @@ def cycle(hel, con, log=print):
         else:
             db.upsert_wallet(con, addr, source="manual", label="watched", tracked=1)
     sync_watch_list(con, log)
+    try:
+        backfill_watched(hel, con, log)
+    except Exception as e:  # never stop tracking over this
+        log(f"backfill error: {e}")
     wallets = con.execute("SELECT * FROM wallets WHERE tracked=1").fetchall()
     total = 0
     for w in wallets:

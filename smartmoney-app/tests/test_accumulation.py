@@ -67,3 +67,27 @@ def test_track_only_watched(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "WATCH_WALLETS", [])          # empty list: leave things alone
     db.upsert_wallet(con, "GAMBLER1", tracked=1)
     assert tracker.sync_watch_list(con, log=lambda *a: None) == 0
+
+
+def test_backfill_watched_loads_history_once_without_alerts(tmp_path, monkeypatch):
+    from smartmoney import tracker
+    from tests.test_core import swap
+    con = db.connect(str(tmp_path / "b.db"))
+    monkeypatch.setattr(config, "WATCH_WALLETS", ["WATCHME"])
+    now = 2_000_000_000
+    calls = []
+
+    class H:
+        def transactions(self, w, **k):
+            calls.append(w)
+            return iter([swap("WATCHME", -1, 100, now - d * 86400, mint="BORDR")
+                         for d in (20, 15, 10, 5, 1)] +
+                        [swap("WATCHME", 2, -100, now - 3600, mint="BORDR")])
+    assert tracker.backfill_watched(H(), con, log=lambda *a: None, now=now) == ["WATCHME"]
+    assert con.execute("SELECT COUNT(*) FROM trades").fetchone()[0] == 6
+    assert tracker.backfill_watched(H(), con, log=lambda *a: None, now=now) == []   # once
+    assert calls == ["WATCHME"]
+    sent = []
+    con.execute("INSERT OR REPLACE INTO meta VALUES ('accum_seeded', '1')")
+    assert accumulation.check(con, lambda t, l=None: sent.append(t), log=lambda *a: None,
+                              now=now) == []        # history recorded silently
