@@ -26,3 +26,24 @@ def test_groups_need_repeated_co_buys():
             pos("D", "T2", 50, first=9000)]                       # too late
     grp, shared = scout.groups(rows, {"A", "B", "C", "D"})
     assert grp == [["A", "B"]] and shared[("A", "B")] == {"T1", "T2"}
+
+
+def test_patient_profile():
+    H = 3600
+    trades, rows = [], []
+    # P: 3 tokens, each bought 3x over a day; 2 sold up, 1 still held at +80%.
+    for i, m in enumerate(["A", "B", "C"]):
+        trades += [{"wallet": "P", "mint": m, "side": "buy", "ts": i * 100 * H + k * 8 * H}
+                   for k in range(3)]
+        rows.append({"wallet": "P", "mint": m, "buys": 3, "pnl_pct": 120 if m != "C" else 80,
+                     "pnl_sol": 2.0, "status": "closed" if m != "C" else "open",
+                     "hold_min": 3 * 24 * 60 if m != "C" else None})
+    # F: one-shot flips, mostly losers.
+    for i in range(10):
+        trades.append({"wallet": "F", "mint": f"X{i}", "side": "buy", "ts": i * H})
+        rows.append({"wallet": "F", "mint": f"X{i}", "buys": 1, "pnl_pct": -30 if i % 4 else 40,
+                     "pnl_sol": -0.3, "status": "closed", "hold_min": 5})
+    p = {x["wallet"]: x for x in scout.patient_profile(trades, rows, days=14)}
+    assert p["P"]["win_rate"] == 1.0 and p["P"]["decided"] == 3 and p["P"]["accum_share"] == 1.0
+    assert p["P"]["tokens_per_week"] == 1.5 and p["P"]["median_hold_h"] == 72
+    assert p["F"]["win_rate"] < 0.5 and p["F"]["accum_share"] == 0
