@@ -15,6 +15,7 @@
   python main.py backtest            test "copy at a wallet's Nth buy" on stored trades (no credits)
   python main.py scout [--days 30]   find few-trade wallets winning 90%+, and the groups they trade in
   python main.py scout --profile patient   find slow accumulators: few tokens, repeat buys, mostly wins
+  python main.py holders [--mints M ...]   find big holders who built positions slowly in coins that ran
   python main.py review [--days 7]   each tracked wallet's % gains, and coins they shared
   python main.py serve               dashboard + tracker loop (Replit's Run button)
 """
@@ -42,6 +43,10 @@ def main(argv=None):
     sub.add_parser("test-alert")
     rp = sub.add_parser("report"); rp.add_argument("--send", action="store_true")
     sub.add_parser("backtest")
+    hd = sub.add_parser("holders")
+    hd.add_argument("--mints", nargs="*", default=[], help="extra coins to check")
+    hd.add_argument("--top", type=int, default=20, help="largest holders per coin (max 20)")
+    hd.add_argument("--min-multiple", type=float, default=2.0)
     sc = sub.add_parser("scout")
     sc.add_argument("--profile", choices=["group", "patient"], default="group")
     sc.add_argument("--days", type=float, default=None)
@@ -100,6 +105,10 @@ def main(argv=None):
         else:
             scout.run(days=args.days or 30, top=args.top, min_trades=args.min_trades,
                       max_trades=args.max_trades, min_win=args.min_win)
+    elif args.cmd == "holders":
+        from smartmoney import holders
+        holders.run(extra_mints=args.mints, top=min(args.top, 20),
+                    min_multiple=args.min_multiple)
     elif args.cmd == "backtest":
         from smartmoney import backtest
         backtest.run()
