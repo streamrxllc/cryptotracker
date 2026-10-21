@@ -45,7 +45,7 @@ def main(argv=None):
     sc = sub.add_parser("scout")
     sc.add_argument("--profile", choices=["group", "patient"], default="group")
     sc.add_argument("--days", type=float, default=None)
-    sc.add_argument("--top", type=int, default=300)
+    sc.add_argument("--top", type=int, default=3000)
     sc.add_argument("--min-trades", type=int, default=5)
     sc.add_argument("--max-trades", type=int, default=40)
     sc.add_argument("--min-win", type=float, default=0.9)

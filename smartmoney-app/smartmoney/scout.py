@@ -81,25 +81,45 @@ def groups(rows, wallets, window=COBUY_SECONDS, min_shared=MIN_SHARED):
     return sorted(out, key=len, reverse=True), shared
 
 
-def run(days=30, top=300, min_trades=5, max_trades=40, min_win=0.9, log=print,
+def run(days=30, top=3000, min_trades=5, max_trades=40, min_win=0.9, log=print,
         csv_path="scout.csv"):
     con = db.connect()
     hel = Helius()
-    cands = [r["address"] for r in con.execute(
-        """SELECT address FROM wallets WHERE source='discovered' AND hits >= 2
-           ORDER BY hits DESC, avg_multiple DESC LIMIT ?""", (top,))]
+    # Every early buyer of the winners, not just the top by hits (busy wallets
+    # dominate that ranking).
+    cands = [r[0] for r in con.execute(
+        """SELECT wallet FROM discovery_hits GROUP BY wallet HAVING COUNT(*) >= 2
+           ORDER BY COUNT(*) DESC LIMIT ?""", (top,))]
     if not cands:
         log("No discovered wallets. Run: python main.py discover")
         return
     since = int(time.time() - days * 86400)
-    log(f"Scouting {len(cands)} discovered wallets over {days} days "
-        f"(up to {max_trades * 3} txs each; est. {len(cands) * 15:,}–{len(cands) * 40:,} credits)...")
-    trades = []
-    for i, w in enumerate(cands, 1):
+    log(f"Scouting {len(cands)} early buyers of past winners over {days:g} days "
+        f"(activity check ~{len(cands) * 10:,} credits, then ~30 per quiet wallet)...")
+    # Count each wallet's transactions in the window first (10 credits each).
+    # Reading only a capped slice of a busy wallet's history would make a bot
+    # look like a quiet wallet, so busy wallets are skipped outright.
+    tx_cap = max_trades * 6
+    quiet, busy = [], 0
+    for w in cands:
         try:
-            # Busy wallets can't qualify (too many trades), so cap the read.
+            n = sum(1 for _ in hel.transactions(w, order="desc", full=False, limit=1000,
+                                                 max_txs=tx_cap + 1,
+                                                 filters={"blockTime": {"gte": since}}))
+        except HeliusError as e:
+            log(f"  {w[:8]}… skipped: {e}")
+            continue
+        if n > tx_cap:
+            busy += 1
+        elif n >= 2:
+            quiet.append(w)
+    log(f"  {busy} busy wallets skipped (> {tx_cap} transactions in {days:g} days); "
+        f"{len(quiet)} quiet ones to read.")
+    trades = []
+    for i, w in enumerate(quiet, 1):
+        try:
             for tx in hel.transactions(w, order="desc", full=True, limit=100,
-                                       max_txs=max_trades * 6,
+                                       max_txs=tx_cap,
                                        filters={"blockTime": {"gte": since},
                                                 "status": "succeeded"}):
                 trades += [t.as_dict() for t in extract_trades(tx, w)
@@ -107,7 +127,7 @@ def run(days=30, top=300, min_trades=5, max_trades=40, min_win=0.9, log=print,
         except HeliusError as e:
             log(f"  {w[:8]}… skipped: {e}")
         if i % 50 == 0:
-            log(f"  {i}/{len(cands)} scanned  [~{hel.credits:,} credits]")
+            log(f"  {i}/{len(quiet)} read  [~{hel.credits:,} credits]")
     trades = [t for t in trades if t["mint"] not in config.NON_MEME_MINTS]
 
     mints = list({t["mint"] for t in trades})
