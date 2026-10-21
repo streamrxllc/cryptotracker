@@ -85,7 +85,28 @@ def send_alerts(con, sigs, log=print):
             log(f"telegram alert failed: {e}")
 
 
+def sync_watch_list(con, log=print):
+    """With TRACK_ONLY_WATCHED, stop tracking anything not on WATCH_WALLETS."""
+    ws = [w for w in config.WATCH_WALLETS if w]
+    if not (config.TRACK_ONLY_WATCHED and ws):
+        return 0
+    q = ",".join("?" * len(ws))
+    n = con.execute(f"UPDATE wallets SET tracked=0 WHERE tracked=1 AND address NOT IN ({q})",
+                    ws).rowcount
+    con.commit()
+    if n:
+        log(f"   stopped tracking {n} wallets not on the watch list")
+    return n
+
+
 def cycle(hel, con, log=print):
+    # Apply the watch list before polling, so dropped wallets aren't polled.
+    for addr in config.WATCH_WALLETS:
+        if con.execute("SELECT 1 FROM wallets WHERE address=?", (addr,)).fetchone():
+            db.upsert_wallet(con, addr, tracked=1)
+        else:
+            db.upsert_wallet(con, addr, source="manual", label="watched", tracked=1)
+    sync_watch_list(con, log)
     wallets = con.execute("SELECT * FROM wallets WHERE tracked=1").fetchall()
     total = 0
     for w in wallets:
@@ -94,11 +115,6 @@ def cycle(hel, con, log=print):
         except HeliusError as e:
             log(f"  {w['address'][:8]}… error: {e}")
             STATE["last_error"] = str(e)
-    # Watched wallets are polled even if vetting didn't pick them.
-    tracked = {w["address"] for w in wallets}
-    for addr in config.WATCH_WALLETS:
-        if addr not in tracked:
-            db.upsert_wallet(con, addr, source="manual", label="watched", tracked=1)
     try:
         accumulation.check(con, notify, log)
     except Exception as e:  # alerts must never stop tracking

@@ -53,3 +53,17 @@ def test_sell_alert_for_position_built_long_ago():
     now = 1_000_000 + 6 * day + 60
     ev = accumulation.events(tr, [3, 5, 8], now, 72, 0.5, set(), sell_lookback_hours=30 * 24)
     assert [e[2] for e in ev] == ["sell"] and ev[0][3]["sold_sol"] == 20
+
+
+def test_track_only_watched(tmp_path, monkeypatch):
+    from smartmoney import tracker
+    con = db.connect(str(tmp_path / "t.db"))
+    for w in ["GAMBLER1", "GAMBLER2", "KEEP"]:
+        db.upsert_wallet(con, w, tracked=1)
+    monkeypatch.setattr(config, "WATCH_WALLETS", ["KEEP"])
+    monkeypatch.setattr(config, "TRACK_ONLY_WATCHED", True)
+    assert tracker.sync_watch_list(con, log=lambda *a: None) == 2
+    assert [r[0] for r in con.execute("SELECT address FROM wallets WHERE tracked=1")] == ["KEEP"]
+    monkeypatch.setattr(config, "WATCH_WALLETS", [])          # empty list: leave things alone
+    db.upsert_wallet(con, "GAMBLER1", tracked=1)
+    assert tracker.sync_watch_list(con, log=lambda *a: None) == 0

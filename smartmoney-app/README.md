@@ -57,14 +57,15 @@ and subtracts half a point for each tracked wallet that is net selling.
 
 ## Accumulation alerts
 
-Watched wallets (`WATCH_WALLETS`, comma-separated; defaults to D9Ji…, 6uu3…
-and Ampm…, the ones that made money in the first review) trigger a Telegram
-alert and a dashboard entry when, within 72 hours, they:
+Watched wallets (`WATCH_WALLETS`, comma-separated; defaults to six holders
+found by `python main.py holders` that built positions slowly in coins that
+ran) trigger a Telegram alert and a dashboard entry when, within 72 hours, they:
 
 - make their **3rd, 5th or 8th** buy (0.5 SOL+) of the same token, and
 - **start selling** a token they had bought 3+ times (your exit signal).
 
-Each alert fires once. Staked-SOL tokens (mSOL, JitoSOL…) are ignored.
+Each alert fires once. With `TRACK_ONLY_WATCHED` (on by default) the tracker
+polls only the watch list and stops tracking every other wallet. Staked-SOL tokens (mSOL, JitoSOL…) are ignored.
 Alerts need the tracker running (Run button, or a Reserved VM for 24/7)
 and the Telegram secrets set.
 

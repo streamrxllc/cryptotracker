@@ -77,13 +77,19 @@ LATE_PCT_24H = _env("late_pct_24h", 300.0, float)
 ALERT_COOLDOWN_HOURS = _env("alert_cooldown_hours", 12, float)
 
 # --- Accumulation alerts -------------------------------------------------------
-# Wallets whose repeat buying you want pinged about (comma-separated in Secrets).
-# Defaults: the three tracked wallets that made money in the Oct 16 review.
+# Wallets to track and get alerts on (comma-separated in Secrets).
+# Defaults: holders that built positions slowly in coins that ran (holder
+# search, Oct 21). The original high-volume "gambler" wallets were dropped.
 WATCH_WALLETS = [w.strip() for w in _env(
     "watch_wallets",
-    "D9Jibi4oneM46vCjF2qq8Azc2kPxCTfJKi6i5uMnz8Aq,"
-    "6uu3hHQinzVRFvpdy7m44RM8w221ACDxqXpmvLiLUFd6,"
-    "AmpmyC9C7k9eKpPHt7N2qPR5cDPmrv1mQPjKjz7xZqRw").split(",") if w.strip()]
+    "DmG6ECng9cPECEbdNea5HzXZ6khp8fuuyZG227iip2pi,"
+    "Gge2CjCKcrFq5oVvZpEyEMvHV3UGDkWGcsUocEgzAgSx,"
+    "H8uQd8XpuUu5GhQegwBDskYSFjj386o1Z4dZqyneSTP,"
+    "kHfajAXALAgbBup22egPEjgP135Le4yzM7LZd6oXbtF,"
+    "bb3VYRGxmGzFWgccaWHYhgXCLGpEkxumX4S7PaHbNaT,"
+    "A1LdRHctbjDfJzK1raE9HCnid6hmtBws4JSVUYLEXnfr").split(",") if w.strip()]
+# Track ONLY the watch list (stop polling everything vetting picked earlier).
+TRACK_ONLY_WATCHED = _env("track_only_watched", True, bool)
 ACCUM_MILESTONES = [int(x) for x in _env("accum_milestones", "3,5,8").split(",")]
 ACCUM_WINDOW_HOURS = _env("accum_window_hours", 72, float)
 ACCUM_MIN_BUY_SOL = _env("accum_min_buy_sol", 0.5, float)   # ignore dust buys
