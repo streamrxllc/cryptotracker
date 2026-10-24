@@ -101,3 +101,10 @@ def daily_ohlcv(pool):
     rows = (((data.get("data") or {}).get("attributes") or {}).get("ohlcv_list")) or []
     rows = [tuple(float(v) for v in r[:6]) for r in rows if len(r) >= 6]
     return sorted(rows, key=lambda r: r[0])
+
+
+def token_best_pool(mint):
+    """The most liquid pool for a token (dict from pool_rows), or None."""
+    rows = pool_rows(_get(f"/networks/solana/tokens/{mint}/pools", {"page": 1}))
+    rows = [r for r in rows if r["base"] == mint]
+    return max(rows, key=lambda r: r["liquidity"] or 0) if rows else None
