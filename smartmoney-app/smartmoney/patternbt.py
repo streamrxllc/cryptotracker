@@ -1,11 +1,14 @@
 """Backtest the "BORDR pattern": was a coin being accumulated by several
 patient, independent wallets BEFORE it ran, more than coins that went nowhere?
 
-For each coin (past winners + a random sample of other coins our wallets
-traded), we replay its trades from launch until it first reaches CHECK_MCAP
-(the "checkpoint", e.g. $300k), score the accumulation in the WINDOW hours
-before that, then look up how high it went afterwards (GeckoTerminal daily
-closes). Runners (10x+ from the checkpoint) vs duds (<2x) are compared.
+This mirrors what an hourly scanner would see. For each coin (past winners +
+other memecoins our wallets traded), the checkpoint is the first day the coin
+is at least MIN_AGE_DAYS old with a market cap between LO and HI (e.g. $100k–
+$1.5M): old enough to be past the launch frenzy, small enough to still run.
+We score accumulation in the WINDOW hours before that day, then look up the
+highest daily close afterwards. Runners (10x+) are compared with duds (<2x).
+Coins that were already above HI by MIN_AGE_DAYS are counted separately:
+no scanner of this kind could have caught them.
 """
 import csv
 import random
@@ -99,8 +102,25 @@ def outcome(candles, checkpoint_ts, supply, check_mcap):
     return max(c[4] for c in after) * supply / check_mcap
 
 
-def run(controls=40, check_mcap=300_000, window_h=72, runner_x=10, max_txs=6000, seed=7,
-        log=print, csv_path="patternbt.csv"):
+def find_checkpoint(candles, launch_ts, supply, min_age_days, lo, hi):
+    """First day >= min_age_days after launch whose opening market cap (prior
+    day's close) is within [lo, hi]. Pure. Returns (day_ts, mcap), or
+    ("ran", mcap) if it passed hi before ever being in range, or None."""
+    candles = sorted(candles, key=lambda c: c[0])
+    for prev, cur in zip(candles, candles[1:]):
+        if cur[0] < launch_ts + min_age_days * 86400:
+            continue
+        mcap = prev[4] * supply
+        if lo <= mcap <= hi:
+            return cur[0], mcap
+        if mcap > hi:
+            return "ran", mcap
+    return None
+
+
+def run(controls=60, lo=100_000, hi=1_500_000, min_age_days=2, window_h=48, runner_x=10,
+        max_txs=10_000, max_age_days=150, seed=7, log=print, csv_path="patternbt.csv"):
+    import time as _time
     con = db.connect()
     hel = Helius()
     winners = list(read_winners())
@@ -109,62 +129,81 @@ def run(controls=40, check_mcap=300_000, window_h=72, runner_x=10, max_txs=6000,
     others = [m for m in others if m not in skip]
     random.Random(seed).shuffle(others)
     sol_usd = dexscreener.sol_usd()
-    log(f"Backtesting the accumulation pattern: {len(winners)} past winners + up to "
-        f"{controls} other coins, checkpoint at ${check_mcap:,.0f} market cap, "
-        f"{window_h:g}h window. Up to ~{max_txs // 10:,} credits per coin; "
-        f"GeckoTerminal adds ~15s per coin.")
+    oldest = _time.time() - max_age_days * 86400
+    log(f"Backtesting the accumulation pattern on {len(winners)} past winners + up to "
+        f"{controls} other memecoins. Checkpoint: first day a coin is {min_age_days:g}+ days "
+        f"old at ${lo:,.0f}–${hi:,.0f}; scoring the {window_h:g}h before it. "
+        f"Up to ~{max_txs // 10:,} credits and ~15s per coin.")
 
-    rows, tried_controls = [], 0
-    skipped = defaultdict(int)
+    rows, tried, skipped = [], 0, defaultdict(int)
     queue = [(m, "winner") for m in winners] + [(m, "control") for m in others]
     for mint, source in queue:
-        if source == "control" and tried_controls >= controls:
+        if source == "control" and tried >= controls:
             break
-        if source == "control":
-            tried_controls += 1
         pool = gecko.token_best_pool(mint)
         if not pool:
             skipped["no price history"] += 1
             continue
+        if source == "control":
+            # Only memecoins like the winners: SOL-paired, launched in the window.
+            if pool["quote"] not in config.SOL_QUOTES or not pool["created"] \
+                    or pool["created"] < oldest:
+                skipped["not a recent SOL-paired coin"] += 1
+                continue
+            tried += 1
         try:
             supply = float((hel.rpc("getTokenSupply", [mint]) or {}).get("value", {})
                            .get("uiAmountString") or 0)
         except HeliusError:
-            continue
+            supply = 0
         if not supply:
+            skipped["no supply"] += 1
             continue
+        candles = gecko.daily_ohlcv(pool["pool"])
+        cp = find_checkpoint(candles, pool["created"] or 0, supply, min_age_days, lo, hi)
+        if cp is None:
+            skipped[f"never in ${lo:,.0f}–${hi:,.0f} after day {min_age_days:g}"] += 1
+            continue
+        if cp[0] == "ran":
+            skipped[f"already above ${hi:,.0f} by day {min_age_days:g} ({source})"] += 1
+            continue
+        cp_ts, cp_mcap = cp
+        trades, read = [], 0
         try:
-            txs = hel.transactions(mint, order="asc", full=True, limit=100, max_txs=max_txs,
-                                   filters={"status": "succeeded"})
-            cp = scan_to_checkpoint(txs, mint, supply, sol_usd, check_mcap)
+            for tx in hel.transactions(mint, order="asc", full=True, limit=100,
+                                       max_txs=max_txs,
+                                       filters={"status": "succeeded",
+                                                "blockTime": {"gte": int(cp_ts - window_h * 3600),
+                                                              "lt": int(cp_ts)}}):
+                read += 1
+                t = trader_trade(tx, mint)
+                if t:
+                    trades.append({"wallet": t.wallet, "side": t.side,
+                                   "sol": t.sol_value(sol_usd), "amt": t.token_amount,
+                                   "ts": int(tx.get("blockTime") or 0)})
         except HeliusError as e:
             log(f"  {mint[:6]}… skipped: {e}")
             continue
-        if not cp:
-            skipped[f"didn't reach ${check_mcap:,.0f} within {max_txs:,} txs"] += 1
-            continue
-        x = outcome(gecko.daily_ohlcv(pool["pool"]), cp["checkpoint_ts"], supply,
-                    cp["checkpoint_mcap"])
+        f = features(trades, cp_ts, pool["created"] or 0, None, window_h)
+        after = [c for c in candles if c[0] >= cp_ts]
+        x = max(c[4] for c in after) * supply / cp_mcap if after else None
         if x is None:
             continue
-        f = features(cp["trades"], cp["checkpoint_ts"], cp["launch_ts"], cp["creator"],
-                     window_h)
         label = "runner" if x >= runner_x else ("dud" if x < 2 else "middle")
         rows.append({"mint": mint, "name": pool["name"], "source": source, "label": label,
-                     "outcome_x": x, **f})
-        log(f"  {(pool['name'] or mint[:6])[:22]:<22} {source:<7} → {x:6.1f}x  "
-            f"{label:<6}  accumulators {f['n_accum']:>2}  share {f['accum_share']*100:3.0f}%  "
-            f"[~{hel.credits:,} credits]")
-
+                     "outcome_x": x, "checkpoint_mcap": cp_mcap, "truncated": read >= max_txs,
+                     "window_txs": read, **f})
+        log(f"  {(pool['name'] or mint[:6])[:22]:<22} {source:<7} ${cp_mcap / 1e3:6.0f}k → "
+            f"{x:6.1f}x {label:<6} accumulators {f['n_accum']:>2}  share "
+            f"{f['accum_share'] * 100:3.0f}%  [~{hel.credits:,} credits]")
     runners = [r for r in rows if r["label"] == "runner"]
     duds = [r for r in rows if r["label"] == "dud"]
     if skipped:
-        log("\nSkipped: " + ", ".join(f"{n} {why}" for why, n in skipped.items()) +
-            ". (Raise --max-txs if many winners hit the cap.)")
+        log("\nNot scored: " + "; ".join(f"{n} {why}" for why, n in skipped.items()) + ".")
     log(f"\n{len(rows)} coins scored: {len(runners)} runners ({runner_x:g}x+ after the "
         f"checkpoint), {len(duds)} duds (<2x), {len(rows) - len(runners) - len(duds)} in between.")
     if not runners or not duds:
-        log("Not enough of both groups to compare. Try --controls 80 or a lower --mcap.")
+        log("Not enough of both groups to compare. Try --controls 120, or widen --lo/--hi.")
     else:
         log("\nMedian at the checkpoint      runners    duds")
         for k, lab, fmt in [("n_accum", "patient accumulators", "{:.0f}"),
@@ -186,8 +225,9 @@ def run(controls=40, check_mcap=300_000, window_h=72, runner_x=10, max_txs=6000,
             log(f"  {k}+ patient accumulators: catches {pr}/{len(runners)} runners, "
                 f"{pd}/{len(duds)} duds → {hit:.0%} of flagged coins ran")
     with open(csv_path, "w", newline="") as fh:
-        cols = ["mint", "name", "source", "label", "outcome_x", "n_accum", "accum_share",
-                "accum_sol", "net_flow", "unique_buyers", "top10_share", "age_h", "buy_sol"]
+        cols = ["mint", "name", "source", "label", "outcome_x", "checkpoint_mcap", "n_accum",
+                "accum_share", "accum_sol", "net_flow", "unique_buyers", "top10_share", "age_h",
+                "buy_sol", "window_txs", "truncated"]
         wr = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         wr.writeheader()
         for r in rows:

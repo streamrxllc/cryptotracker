@@ -45,10 +45,12 @@ def main(argv=None):
     rp = sub.add_parser("report"); rp.add_argument("--send", action="store_true")
     sub.add_parser("backtest")
     pb = sub.add_parser("patternbt")
-    pb.add_argument("--controls", type=int, default=40)
-    pb.add_argument("--mcap", type=float, default=300_000)
-    pb.add_argument("--window", type=float, default=72)
-    pb.add_argument("--max-txs", type=int, default=6000)
+    pb.add_argument("--controls", type=int, default=60)
+    pb.add_argument("--lo", type=float, default=100_000, help="checkpoint market cap floor")
+    pb.add_argument("--hi", type=float, default=1_500_000, help="checkpoint market cap ceiling")
+    pb.add_argument("--min-age-days", type=float, default=2)
+    pb.add_argument("--window", type=float, default=48, help="hours scored before checkpoint")
+    pb.add_argument("--max-txs", type=int, default=10_000)
     hd = sub.add_parser("holders")
     hd.add_argument("--mints", nargs="*", default=[], help="extra coins to check")
     hd.add_argument("--top", type=int, default=20, help="largest holders per coin (max 20)")
@@ -117,7 +119,8 @@ def main(argv=None):
                       max_trades=args.max_trades, min_win=args.min_win)
     elif args.cmd == "patternbt":
         from smartmoney import patternbt
-        patternbt.run(controls=args.controls, check_mcap=args.mcap, window_h=args.window,
+        patternbt.run(controls=args.controls, lo=args.lo, hi=args.hi,
+                      min_age_days=args.min_age_days, window_h=args.window,
                       max_txs=args.max_txs)
     elif args.cmd == "holders":
         from smartmoney import holders
