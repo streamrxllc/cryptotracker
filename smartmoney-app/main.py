@@ -51,6 +51,7 @@ def main(argv=None):
     pb.add_argument("--min-age-days", type=float, default=2)
     pb.add_argument("--window", type=float, default=48, help="hours scored before checkpoint")
     pb.add_argument("--max-txs", type=int, default=10_000)
+    pb.add_argument("--out", default="patternbt.csv", help="CSV file to write")
     hd = sub.add_parser("holders")
     hd.add_argument("--mints", nargs="*", default=[], help="extra coins to check")
     hd.add_argument("--top", type=int, default=20, help="largest holders per coin (max 20)")
@@ -121,7 +122,7 @@ def main(argv=None):
         from smartmoney import patternbt
         patternbt.run(controls=args.controls, lo=args.lo, hi=args.hi,
                       min_age_days=args.min_age_days, window_h=args.window,
-                      max_txs=args.max_txs)
+                      max_txs=args.max_txs, csv_path=args.out)
     elif args.cmd == "holders":
         from smartmoney import holders
         holders.run(extra_mints=args.mints, top=min(args.top, 20),
