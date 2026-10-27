@@ -44,16 +44,19 @@ def group_sources(chains, profits, coins):
     """chains: {wallet: [funder, grand-funder, ...]} (hubs already removed).
     profits: {wallet: SOL}; coins: {wallet: set(mints)}. Pure.
     Returns sources sorted by distinct coins, then profit."""
-    under = defaultdict(set)
+    under, depth_of = defaultdict(set), {}
     for w, chain in chains.items():
         for depth, a in enumerate(chain, 1):
-            under[(a, depth)].add(w)
-    best = {}
-    for (a, depth), ws in under.items():
-        if len(ws) < 2:
+            under[a].add(w)                       # same ancestor at any depth = one source
+            depth_of[a] = min(depth, depth_of.get(a, depth))
+    best, seen = {}, set()
+    # Several ancestors on one chain cover the same wallets; keep only the nearest.
+    for a in sorted(under, key=lambda a: depth_of[a]):
+        ws = frozenset(under[a])
+        if len(ws) < 2 or ws in seen:
             continue
-        if a not in best or len(ws) > len(best[a]["wallets"]):
-            best[a] = {"source": a, "depth": depth, "wallets": sorted(ws)}
+        seen.add(ws)
+        best[a] = {"source": a, "depth": depth_of[a], "wallets": sorted(ws)}
     for s in best.values():
         s["profit_sol"] = sum(profits.get(w, 0) for w in s["wallets"])
         s["coins"] = set().union(*(coins.get(w, set()) for w in s["wallets"]))
