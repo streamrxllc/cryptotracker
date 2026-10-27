@@ -10,7 +10,7 @@ from functools import wraps
 from flask import Flask, jsonify, redirect, request, session
 from flask.sessions import SecureCookieSessionInterface
 
-from . import accumulation, config, db, paper, report, tracker
+from . import accumulation, config, db, paper, report, sources, tracker
 
 app = Flask(__name__)
 app.permanent_session_lifetime = timedelta(days=30)
@@ -132,6 +132,21 @@ def index():
     al = accumulation.recent(con)
     arows = "".join(f"<li>{_ago(a['sent_at'])}: {html.escape(a['text'].splitlines()[0])}</li>"
                     for a in al) or "<li>None yet. Fires when a watched wallet makes buy #3, #5 or #8 on a token, or starts selling one.</li>"
+    so = sources.overview(con)
+    def srow(r):
+        a = r["address"]
+        link = f"<a href='https://solscan.io/account/{a}'>{a[:4]}…{a[-4:]}</a>"
+        if not r["depth"]:
+            return (f"<tr><td colspan=5><b>Source {link}</b> · "
+                    f"{sum(1 for x in so if x['root'] == a and x['depth'])} wallets funded</td></tr>")
+        lm = r["last_mint"]
+        return (f"<tr><td>{'&nbsp;' * 4 * r['depth']}{link}"
+                f"{'' if r['following'] else ' <span class=mut>(stopped)</span>'}</td>"
+                f"<td>{r['depth']} hop{'s' if r['depth'] > 1 else ''}</td>"
+                f"<td>{r['funded_sol']:.1f}</td><td>{_ago(r['funded_ts'])}</td>"
+                f"<td>{r['buys']}{(' · last ' + '<a href=https://dexscreener.com/solana/' + lm + '>' + lm[:6] + '</a>') if lm else ''}</td></tr>")
+    srows = "".join(srow(r) for r in so) or "<tr><td colspan=5>Starting…</td></tr>"
+    nfund = sum(1 for r in so if r["depth"] and r["following"])
     ps = paper.summary(con)
     def prow(r):
         cls = "up" if r["pnl_pct"] > 0 else "down"
@@ -153,6 +168,11 @@ def index():
 <div class=rep>{rep}</div>
 <details open><summary>Alerts</summary>
 <ul class=mut>{arows}</ul></details>
+<details open><summary>Funding sources · {nfund} funded wallets followed</summary>
+<p class=mut>Wallets the watched sources sent {config.SOURCE_MIN_SOL:g}+ SOL to (up to {config.SOURCE_HOPS} hops),
+tracked for {config.SOURCE_FOLLOW_DAYS:g} days. 💸 alert when funded, 🎯 when it buys.</p>
+<div class=wrap><table><tr><th>Wallet</th><th>From source</th><th>SOL</th><th>Funded</th><th>Tokens bought</th></tr>
+{srows}</table></div></details>
 <details><summary>Paper trades · realized ${ps['realized_usd']:+,.0f}, open ${ps['unrealized_usd']:+,.0f}</summary>
 <p class=mut>${config.PAPER_SIZE_USD:g} per signal, {config.PAPER_SLIPPAGE_PCT:g}% slippage each way.
 {len(ps['closed'])} closed (win rate {wr}) · {len(ps['open'])} open.</p>

@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from . import accumulation, config, db, dexscreener, paper, report, signals
+from . import accumulation, config, db, dexscreener, paper, report, signals, sources
 from .helius import Helius, HeliusError
 from .parse import extract_trades
 
@@ -116,7 +116,7 @@ def backfill_watched(hel, con, log=print, now=None):
 
 def sync_watch_list(con, log=print):
     """With TRACK_ONLY_WATCHED, stop tracking anything not on WATCH_WALLETS."""
-    ws = [w for w in config.WATCH_WALLETS if w]
+    ws = [w for w in config.WATCH_WALLETS if w] + sources.active(con)
     if not (config.TRACK_ONLY_WATCHED and ws):
         return 0
     q = ",".join("?" * len(ws))
@@ -135,6 +135,17 @@ def cycle(hel, con, log=print):
             db.upsert_wallet(con, addr, tracked=1)
         else:
             db.upsert_wallet(con, addr, source="manual", label="watched", tracked=1)
+    try:  # wallets the watched funding sources just funded
+        sources.check_funding(hel, con, notify, log)
+        for addr in sources.active(con):
+            row = con.execute("SELECT root FROM source_wallets WHERE address=?", (addr,)).fetchone()
+            if con.execute("SELECT 1 FROM wallets WHERE address=?", (addr,)).fetchone():
+                db.upsert_wallet(con, addr, tracked=1)
+            else:
+                db.upsert_wallet(con, addr, source="funded", tracked=1,
+                                 label=f"funded by {sources.short(row['root'])}")
+    except Exception as e:  # never stop tracking over this
+        log(f"funding source error: {e}")
     sync_watch_list(con, log)
     try:
         backfill_watched(hel, con, log)
@@ -148,6 +159,10 @@ def cycle(hel, con, log=print):
         except HeliusError as e:
             log(f"  {w['address'][:8]}… error: {e}")
             STATE["last_error"] = str(e)
+    try:
+        sources.check_buys(con, notify, log)
+    except Exception as e:
+        log(f"funded-wallet buy alert error: {e}")
     try:
         accumulation.check(con, notify, log)
     except Exception as e:  # alerts must never stop tracking

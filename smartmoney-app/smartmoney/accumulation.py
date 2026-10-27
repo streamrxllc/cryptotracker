@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 
 
 def watched(con):
-    return [w for w in config.WATCH_WALLETS if w]
+    from . import sources
+    return [w for w in config.WATCH_WALLETS if w] + sources.active(con)
 
 
 def events(trades, milestones, now, window_hours, min_buy_sol, skip_mints,

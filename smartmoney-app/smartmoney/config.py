@@ -91,6 +91,17 @@ WATCH_WALLETS = [w.strip() for w in _env(
     "kHfajAXALAgbBup22egPEjgP135Le4yzM7LZd6oXbtF,"
     "bb3VYRGxmGzFWgccaWHYhgXCLGpEkxumX4S7PaHbNaT,"
     "A1LdRHctbjDfJzK1raE9HCnid6hmtBws4JSVUYLEXnfr").split(",") if w.strip()]
+# Funding sources to watch (trace, Oct 27): wallets they fund get tracked and
+# alerted. FWznbc… sat behind STONK/Agency/SI/CLAUDIA winners, FBwXQA… behind ANSEM/BORDR.
+WATCH_SOURCES = [w.strip() for w in _env(
+    "watch_sources",
+    "FWznbcNXWQuHTawe9RxvQ2LdCENssh12dsznf4RiouN5,"
+    "FBwXQAEbPPQ6BKWBFURUrYGRdcAqYTnRz1WijBoXgHpt").split(",") if w.strip()]
+SOURCE_MIN_SOL = _env("source_min_sol", 0.5, float)        # smallest funding that counts
+SOURCE_HOPS = _env("source_hops", 2, int)                  # follow funded wallets' funding too
+SOURCE_FOLLOW_DAYS = _env("source_follow_days", 14, float) # track a funded wallet this long
+SOURCE_LOOKBACK_DAYS = _env("source_lookback_days", 7, float)  # first scan of a source
+SOURCE_MIN_BUY_SOL = _env("source_min_buy_sol", 0.2, float)    # 🎯 buy alert threshold
 # Track ONLY the watch list (stop polling everything vetting picked earlier).
 TRACK_ONLY_WATCHED = _env("track_only_watched", True, bool)
 ACCUM_MILESTONES = [int(x) for x in _env("accum_milestones", "3,5,8").split(",")]
