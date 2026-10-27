@@ -17,6 +17,7 @@
   python main.py scout --profile patient   find slow accumulators: few tokens, repeat buys, mostly wins
   python main.py holders [--mints M ...]   find big holders who built positions slowly in coins that ran
   python main.py patternbt           backtest: is accumulation visible before coins run?
+  python main.py sources             what the watched funding sources funded and bought lately
   python main.py trace               who profited on the winners, and who funded them
   python main.py review [--days 7]   each tracked wallet's % gains, and coins they shared
   python main.py serve               dashboard + tracker loop (Replit's Run button)
@@ -45,6 +46,10 @@ def main(argv=None):
     sub.add_parser("test-alert")
     rp = sub.add_parser("report"); rp.add_argument("--send", action="store_true")
     sub.add_parser("backtest")
+    so = sub.add_parser("sources")
+    so.add_argument("--days", type=float, default=21)
+    so.add_argument("--hops", type=int, default=2)
+    so.add_argument("--out", default="sources.csv")
     tr = sub.add_parser("trace")
     tr.add_argument("--per-coin", type=int, default=40, help="early buyers checked per winner")
     tr.add_argument("--depth", type=int, default=3, help="funding hops to climb")
@@ -125,6 +130,9 @@ def main(argv=None):
         else:
             scout.run(days=args.days or 30, top=args.top, min_trades=args.min_trades,
                       max_trades=args.max_trades, min_win=args.min_win)
+    elif args.cmd == "sources":
+        from smartmoney import sources
+        sources.lookback(days=args.days, hops=args.hops, csv_path=args.out)
     elif args.cmd == "trace":
         from smartmoney import trace
         trace.run(per_coin=args.per_coin, depth=args.depth, min_profit_sol=args.min_profit,

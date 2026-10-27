@@ -196,3 +196,80 @@ def overview(con, now=None):
         r["following"] = bool(r["depth"] and r["funded_ts"] and
                               r["funded_ts"] >= now - config.SOURCE_FOLLOW_DAYS * 86400)
     return rows
+
+
+def lookback(days=21, hops=2, log=print, csv_path="sources.csv"):
+    """One-off report: what the watched sources (and wallets they funded) did
+    in the last `days`: who they funded, and what everyone bought. Read-only."""
+    import csv
+    from collections import defaultdict
+    from . import dexscreener
+    from .helius import Helius
+    hel, now, hubs = Helius(), int(time.time()), {}
+    since = now - int(days * 86400)
+    nodes = [(s, s, None, 0, None, None) for s in config.WATCH_SOURCES]  # addr, root, parent, depth, sol, ts
+    seen, rows, buys = set(config.WATCH_SOURCES), [], defaultdict(lambda: defaultdict(float))
+    i = 0
+    while i < len(nodes):
+        a, root, parent, depth, sol, ts = nodes[i]
+        i += 1
+        start = since if depth == 0 else max(since, (ts or since) - 3600)
+        log(f"{'  ' * depth}{short(a)} ({'source' if not depth else f'{sol:.1f} SOL from {short(parent)}'})"
+            f" … [~{hel.credits:,} credits]")
+        try:
+            for tx in hel.transactions(a, order="asc", full=True, limit=100, max_txs=1500,
+                                       filters={"blockTime": {"gte": int(start)}, "status": "succeeded"}):
+                for t in extract_trades(tx, a):
+                    if t.side == "buy" and t.mint not in config.NON_MEME_MINTS | config.QUOTE_MINTS:
+                        buys[a][t.mint] += abs(t.quote_sol or 0)
+                if depth >= hops:
+                    continue
+                for to, amt in transfers_out(tx, a, config.SOURCE_MIN_SOL):
+                    if to in seen:
+                        continue
+                    seen.add(to)
+                    if _is_hub(hel, to, now, hubs):
+                        rows.append((root, a, to, depth + 1, amt, tx.get("blockTime"), "exchange/hub"))
+                        continue
+                    nodes.append((to, root, a, depth + 1, amt, tx.get("blockTime")))
+        except HeliusError as e:
+            log(f"   error on {short(a)}: {e}")
+    mints = list({m for b in buys.values() for m in b})
+    pairs = dexscreener.best_pairs(mints) if mints else {}
+    info = {m: dexscreener.summarize(pairs.get(m)) for m in mints}
+    def name(m):
+        return info[m].get("symbol") or m[:6]
+
+    log(f"\n=== Last {days:g} days ===")
+    for src in config.WATCH_SOURCES:
+        log(f"\nSOURCE {src}")
+        own = sorted(buys[src].items(), key=lambda kv: -kv[1])
+        log("  bought itself: " + (", ".join(f"{name(m)} {s:.1f} SOL" for m, s in own[:10]) or "nothing"))
+        kids = [n for n in nodes if n[1] == src and n[3] >= 1]
+        log(f"  funded {len(kids)} wallet(s):")
+        for a, root, parent, depth, sol, ts in sorted(kids, key=lambda n: -(n[5] or 0)):
+            b = sorted(buys[a].items(), key=lambda kv: -kv[1])
+            via = f" via {short(parent)}" if depth > 1 else ""
+            log(f"    {a}  {sol:.1f} SOL{via} on {time.strftime('%b %d', time.gmtime(ts or 0))}"
+                f" → {', '.join(f'{name(m)} {s:.1f}' for m, s in b[:6]) or 'no buys yet'}")
+            rows.append((root, parent, a, depth, sol, ts, "; ".join(f"{name(m)}:{s:.2f}" for m, s in b)))
+    # Tokens more than one wallet in the network bought = the network's current bets.
+    by_mint = defaultdict(list)
+    for a, b in buys.items():
+        for m, s in b.items():
+            by_mint[m].append((a, s))
+    shared = sorted(((m, v) for m, v in by_mint.items() if len(v) >= 2), key=lambda kv: -len(kv[1]))
+    if shared:
+        log("\nTokens bought by 2+ wallets in these networks:")
+        for m, v in shared[:15]:
+            t = info[m]
+            mc = f"${t['mcap']:,.0f}" if t.get("mcap") else "?"
+            log(f"  {name(m):<10} {len(v)} wallets, {sum(s for _, s in v):.1f} SOL · MCap {mc} "
+                f"· 24h {t.get('change_h24')}% · {t.get('url') or m}")
+    with open(csv_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["source", "funded_by", "wallet", "hops", "sol_received", "date", "bought (token:SOL)"])
+        for r in rows:
+            w.writerow([r[0], r[1], r[2], r[3], round(r[4] or 0, 3),
+                        time.strftime("%Y-%m-%d %H:%M", time.gmtime(r[5] or 0)), r[6]])
+    log(f"\nSaved {csv_path}. Est. Helius credits: {hel.credits:,}")
