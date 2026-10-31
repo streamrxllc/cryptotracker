@@ -17,7 +17,7 @@ import time
 
 from . import config
 from .helius import HeliusError
-from .parse import extract_trades, signature
+from .parse import extract_trades, signature, signers
 from .trace import HUB_DAYS, HUB_TXS, sol_recipients
 
 SCHEMA = """
@@ -298,6 +298,9 @@ FOLLOW_ROOTS = [
 ]
 
 
+WHALE_SOL = 1000   # a single transfer this big = exchange/OTC/treasury: don't follow
+
+
 def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=print,
            csv_path="follow.csv"):
     """Follow the money forward from `roots`: every wallet they sent SOL to,
@@ -314,6 +317,7 @@ def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=pr
     # node: dict(addr, root, parent, hop, sol, funded_ts)
     nodes = [dict(addr=r, root=r, parent=None, hop=0, sol=None, funded_ts=None) for r in roots]
     seen = set(roots)
+    node_of = {}
     info = {}          # addr -> last_ts, txs, kids, buys_all{mint:sol}, buys_recent{mint:sol}
     exch = defaultdict(float)   # where money left the tree into exchanges/hubs
     i = 0
@@ -330,7 +334,8 @@ def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=pr
                                        filters={"status": "succeeded"}):
                 ts = int(tx.get("blockTime") or 0)
                 d["txs"] += 1
-                d["last_ts"] = max(d["last_ts"], ts)
+                if a in signers(tx):          # its own action, not dust/airdrops sent to it
+                    d["last_ts"] = max(d["last_ts"], ts)
                 for t in extract_trades(tx, a):
                     if t.side == "buy" and t.mint not in config.NON_MEME_MINTS | config.QUOTE_MINTS:
                         d["buys_all"][t.mint] += abs(t.quote_sol or 0)
@@ -340,8 +345,14 @@ def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=pr
                     continue
                 for to, amt in transfers_out(tx, a, min_sol):
                     if to in seen:
+                        k = node_of.get(to)       # newest-first scan: keep the FIRST funding date
+                        if k and k["parent"] == a:
+                            k["funded_ts"], k["sol"] = min(k["funded_ts"], ts), k["sol"] + amt
                         continue
                     seen.add(to)
+                    if amt >= WHALE_SOL:              # exchange / OTC / treasury flow, not a trader
+                        exch[to] += amt
+                        continue
                     if _is_hub(hel, to, now, hubs):
                         exch[to] += amt
                         continue
@@ -349,11 +360,12 @@ def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=pr
                     if len(nodes) < max_nodes:
                         nodes.append(dict(addr=to, root=n["root"], parent=a, hop=n["hop"] + 1,
                                           sol=amt, funded_ts=ts))
+                        node_of[to] = nodes[-1]
         except HeliusError as e:
             log(f"   error on {short(a)}: {e}")
         act = d["last_ts"] >= act_since
         got = f" · got {n['sol']:.1f} SOL" if n["hop"] else ""
-        last = time.strftime("%b %d", time.gmtime(d["last_ts"])) if d["last_ts"] else "never"
+        last = time.strftime("%Y-%m-%d", time.gmtime(d["last_ts"])) if d["last_ts"] else "never"
         log(f"  {'  ' * n['hop']}{short(a)} hop {n['hop']}{got} · last active {last}"
             f"{' 🟢' if act else ''} · funded {d['kids']}  [{len(nodes)} wallets, ~{hel.credits:,} credits]")
     if len(nodes) >= max_nodes:
@@ -388,11 +400,11 @@ def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=pr
             # Print funders and active wallets; dormant dead-ends are only counted.
             if not (kids[n["addr"]] or act or d["buys_all"]) and depth > 1:
                 return
-            edge = (f" ← {n['sol']:.1f} SOL {time.strftime('%b %d', time.gmtime(n['funded_ts']))}"
+            edge = (f" ← {n['sol']:.1f} SOL {time.strftime('%Y-%m-%d', time.gmtime(n['funded_ts']))}"
                     if n["hop"] else "")
             log(f"  {'   ' * depth}{n['addr'] if act else short(n['addr'])}"
                 f"{edge}"
-                f" · last {time.strftime('%b %d', time.gmtime(d['last_ts'])) if d['last_ts'] else 'never'}"
+                f" · last {time.strftime('%Y-%m-%d', time.gmtime(d['last_ts'])) if d['last_ts'] else 'never'}"
                 f"{' 🟢 ACTIVE' if act else ''}"
                 f"{' · funded ' + str(d['kids']) if d['kids'] else ''}"
                 f"{' · bought ' + top(d['buys_all'], 3) if d['buys_all'] else ''}")
