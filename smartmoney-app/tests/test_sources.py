@@ -78,3 +78,20 @@ def test_buy_alerts(tmp_path, monkeypatch):
     msgs = sources.check_buys(con, lambda t, log=None: None, log=lambda *a: None, now=NOW)
     assert len(msgs) == 1 and "🎯" in msgs[0] and "NEWMINT"[:8] in msgs[0]
     assert sources.check_buys(con, lambda t, log=None: None, log=lambda *a: None, now=NOW) == []
+
+
+def test_follow_finds_active_frontier(monkeypatch, tmp_path):
+    import time
+    import smartmoney.helius as hm
+    t = int(time.time())
+    R = "ROOT111111111111111111111111111111111111111"
+    h = Hel({R: [send(R, "A1", 10, t - 90 * 86400)],
+             "A1": [send("A1", "B1", 5, t - 60 * 86400), send("A1", "CEX", 2, t - 40 * 86400)],
+             "B1": [send("B1", "C1", 2, t - 2 * 86400)],
+             "C1": [swap("C1", -1.5, 5, t - 3600)]}, hubs={"CEX"})
+    monkeypatch.setattr(hm, "Helius", lambda: h)
+    monkeypatch.setattr(dexscreener, "best_pairs", lambda m: {})
+    nodes, info = sources.follow(roots=[R], log=lambda *a: None, csv_path=str(tmp_path / "f.csv"))
+    assert [n["addr"] for n in nodes] == [R, "A1", "B1", "C1"]          # CEX not followed
+    assert [n["hop"] for n in nodes] == [0, 1, 2, 3]
+    assert info["C1"]["buys_recent"] and info["B1"]["kids"] == 1

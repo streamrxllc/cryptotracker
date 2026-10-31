@@ -289,3 +289,159 @@ def lookback(days=21, hops=2, log=print, csv_path="sources.csv"):
             w.writerow([r[0], r[1], r[2], r[3], round(r[4] or 0, 3),
                         time.strftime("%Y-%m-%d %H:%M", time.gmtime(r[5] or 0)), r[6]])
     log(f"\nSaved {csv_path}. Est. Helius credits: {hel.credits:,}")
+
+
+# Top of the two funding chains the trace found (each was 3 hops above a winner).
+FOLLOW_ROOTS = [
+    "EVtyyoCXZ79fc9C7u17bF6skmgfqXueNMNL6HrtWPMe",   # -> CpjcPX… -> FWznbc… (STONK/Agency/SI/CLAUDIA)
+    "8STVubP1QgsC2BLquzzg4XB1umY9hFjhkjEkjuo9dhpa",   # -> EHqfgz… -> FBwXQA… (ANSEM/BORDR)
+]
+
+
+def follow(roots=None, hops=5, max_nodes=300, min_sol=0.5, active_days=7, log=print,
+           csv_path="follow.csv"):
+    """Follow the money forward from `roots`: every wallet they sent SOL to,
+    every wallet those sent SOL to, ... (all history, newest first per wallet).
+    Stops at exchanges/hubs, `hops` deep, or `max_nodes` wallets. Shows which
+    wallets in the tree are active now and what they're buying."""
+    import csv
+    from collections import defaultdict
+    from . import dexscreener
+    from .helius import Helius
+    hel, now, hubs = Helius(), int(time.time()), {}
+    act_since = now - int(active_days * 86400)
+    roots = roots or FOLLOW_ROOTS
+    # node: dict(addr, root, parent, hop, sol, funded_ts)
+    nodes = [dict(addr=r, root=r, parent=None, hop=0, sol=None, funded_ts=None) for r in roots]
+    seen = set(roots)
+    info = {}          # addr -> last_ts, txs, kids, buys_all{mint:sol}, buys_recent{mint:sol}
+    exch = defaultdict(float)   # where money left the tree into exchanges/hubs
+    i = 0
+    log(f"Following the money from {len(roots)} root(s), up to {hops} hops / {max_nodes} wallets "
+        f"(~100 credits per wallet)...")
+    while i < len(nodes):
+        n = nodes[i]
+        i += 1
+        a = n["addr"]
+        d = info[a] = dict(last_ts=0, txs=0, kids=0, buys_all=defaultdict(float),
+                           buys_recent=defaultdict(float))
+        try:
+            for tx in hel.transactions(a, order="desc", full=True, limit=100, max_txs=1000,
+                                       filters={"status": "succeeded"}):
+                ts = int(tx.get("blockTime") or 0)
+                d["txs"] += 1
+                d["last_ts"] = max(d["last_ts"], ts)
+                for t in extract_trades(tx, a):
+                    if t.side == "buy" and t.mint not in config.NON_MEME_MINTS | config.QUOTE_MINTS:
+                        d["buys_all"][t.mint] += abs(t.quote_sol or 0)
+                        if ts >= act_since:
+                            d["buys_recent"][t.mint] += abs(t.quote_sol or 0)
+                if n["hop"] >= hops:
+                    continue
+                for to, amt in transfers_out(tx, a, min_sol):
+                    if to in seen:
+                        continue
+                    seen.add(to)
+                    if _is_hub(hel, to, now, hubs):
+                        exch[to] += amt
+                        continue
+                    d["kids"] += 1
+                    if len(nodes) < max_nodes:
+                        nodes.append(dict(addr=to, root=n["root"], parent=a, hop=n["hop"] + 1,
+                                          sol=amt, funded_ts=ts))
+        except HeliusError as e:
+            log(f"   error on {short(a)}: {e}")
+        act = d["last_ts"] >= act_since
+        got = f" · got {n['sol']:.1f} SOL" if n["hop"] else ""
+        last = time.strftime("%b %d", time.gmtime(d["last_ts"])) if d["last_ts"] else "never"
+        log(f"  {'  ' * n['hop']}{short(a)} hop {n['hop']}{got} · last active {last}"
+            f"{' 🟢' if act else ''} · funded {d['kids']}  [{len(nodes)} wallets, ~{hel.credits:,} credits]")
+    if len(nodes) >= max_nodes:
+        log(f"  (stopped at {max_nodes} wallets; raise --max-nodes to go further)")
+
+    mints = list({m for d in info.values() for m in d["buys_all"]})
+    pairs = dexscreener.best_pairs(mints) if mints else {}
+    tok = {m: dexscreener.summarize(pairs.get(m)) for m in mints}
+
+    def name(m):
+        return tok[m].get("symbol") or m[:6]
+
+    def top(b, k=5):
+        return ", ".join(f"{name(m)} {s:.1f}" for m, s in sorted(b.items(), key=lambda kv: -kv[1])[:k])
+
+    by_root = defaultdict(list)
+    for n in nodes:
+        by_root[n["root"]].append(n)
+    log(f"\n=== Funding trees ===")
+    for r in roots:
+        tree = by_root[r]
+        active = [n for n in tree if info[n["addr"]]["last_ts"] >= act_since]
+        log(f"\nROOT {r}: {len(tree) - 1} wallets downstream, {len(active)} active in the last "
+            f"{active_days:g} days")
+        kids = defaultdict(list)
+        for n in tree:
+            kids[n["parent"]].append(n)
+
+        def show(n, depth):
+            d = info[n["addr"]]
+            act = d["last_ts"] >= act_since
+            # Print funders and active wallets; dormant dead-ends are only counted.
+            if not (kids[n["addr"]] or act or d["buys_all"]) and depth > 1:
+                return
+            edge = (f" ← {n['sol']:.1f} SOL {time.strftime('%b %d', time.gmtime(n['funded_ts']))}"
+                    if n["hop"] else "")
+            log(f"  {'   ' * depth}{n['addr'] if act else short(n['addr'])}"
+                f"{edge}"
+                f" · last {time.strftime('%b %d', time.gmtime(d['last_ts'])) if d['last_ts'] else 'never'}"
+                f"{' 🟢 ACTIVE' if act else ''}"
+                f"{' · funded ' + str(d['kids']) if d['kids'] else ''}"
+                f"{' · bought ' + top(d['buys_all'], 3) if d['buys_all'] else ''}")
+            for c in sorted(kids[n["addr"]], key=lambda c: -(c["funded_ts"] or 0)):
+                show(c, depth + 1)
+        show(tree[0], 0)
+
+    act_nodes = [n for n in nodes if info[n["addr"]]["last_ts"] >= act_since]
+    log(f"\n=== Active now (last {active_days:g} days): the next ones ===")
+    for n in sorted(act_nodes, key=lambda n: -info[n["addr"]]["last_ts"]):
+        d = info[n["addr"]]
+        log(f"  {n['addr']}  hop {n['hop']} under {short(n['root'])} · last "
+            f"{time.strftime('%b %d %H:%M', time.gmtime(d['last_ts']))} UTC"
+            f"{' · funded ' + str(d['kids']) if d['kids'] else ''}"
+            f" · buying: {top(d['buys_recent']) or 'nothing'}")
+    shared = defaultdict(list)
+    for a, d in info.items():
+        for m, s in d["buys_recent"].items():
+            shared[m].append(s)
+    hot = sorted(((m, v) for m, v in shared.items()), key=lambda kv: (-len(kv[1]), -sum(kv[1])))
+    if hot:
+        log(f"\nTokens the network bought in the last {active_days:g} days:")
+        for m, v in hot[:15]:
+            t = tok[m]
+            log(f"  {name(m):<10} {len(v)} wallet(s), {sum(v):.1f} SOL · MCap "
+                f"{'$%s' % format(int(t['mcap']), ',') if t.get('mcap') else '?'} · 24h "
+                f"{t.get('change_h24')}% · {t.get('url') or m}")
+    if exch:
+        log(f"\nMoney that left the tree into {len(exch)} exchange/hub account(s): "
+            f"{sum(exch.values()):.0f} SOL (trail goes cold there).")
+    funders = [n["addr"] for n in act_nodes if info[n["addr"]]["kids"]]
+    traders = [n["addr"] for n in act_nodes if not info[n["addr"]]["kids"]]
+    if act_nodes:
+        log("\nTo watch these live, set these Replit Secrets and redeploy:")
+        if funders:
+            log(f"  WATCH_SOURCES = {','.join(funders)}")
+        if traders:
+            log(f"  add to WATCH_WALLETS: {','.join(traders)}")
+    with open(csv_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["root", "hop", "wallet", "funded_by", "sol_received", "funded_date",
+                    "last_active", "active", "txs_scanned", "wallets_funded",
+                    f"buys_last_{active_days:g}d", "buys_all"])
+        for n in nodes:
+            d = info[n["addr"]]
+            fmt = lambda ts: time.strftime("%Y-%m-%d %H:%M", time.gmtime(ts)) if ts else ""
+            w.writerow([n["root"], n["hop"], n["addr"], n["parent"] or "",
+                        round(n["sol"], 3) if n["sol"] else "", fmt(n["funded_ts"]),
+                        fmt(d["last_ts"]), int(d["last_ts"] >= act_since), d["txs"], d["kids"],
+                        top(d["buys_recent"], 10), top(d["buys_all"], 10)])
+    log(f"\nSaved {csv_path}. Est. Helius credits: {hel.credits:,}")
+    return nodes, info
