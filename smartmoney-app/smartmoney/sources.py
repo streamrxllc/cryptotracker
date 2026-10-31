@@ -209,11 +209,25 @@ def lookback(days=21, hops=2, log=print, csv_path="sources.csv"):
     since = now - int(days * 86400)
     nodes = [(s, s, None, 0, None, None) for s in config.WATCH_SOURCES]  # addr, root, parent, depth, sol, ts
     seen, rows, buys = set(config.WATCH_SOURCES), [], defaultdict(lambda: defaultdict(float))
+    # A dormant source: look at the `days` before its last activity instead.
+    root_since, last_seen = {}, {}
+    for src in config.WATCH_SOURCES:
+        try:
+            res = hel.rpc("getSignaturesForAddress", [src, {"limit": 1}])
+        except HeliusError:
+            res = []
+        last = int(res[0].get("blockTime") or 0) if res else 0
+        last_seen[src] = last
+        root_since[src] = since if last >= since or not last else last - int(days * 86400)
+        log(f"{short(src)} last active: "
+            f"{time.strftime('%Y-%m-%d', time.gmtime(last)) if last else 'never'}"
+            f"{'' if last >= since or not last else f' (dormant; using the {days:g} days before that)'}")
     i = 0
     while i < len(nodes):
         a, root, parent, depth, sol, ts = nodes[i]
         i += 1
-        start = since if depth == 0 else max(since, (ts or since) - 3600)
+        rs = root_since[root]
+        start = rs if depth == 0 else max(rs, (ts or rs) - 3600)
         log(f"{'  ' * depth}{short(a)} ({'source' if not depth else f'{sol:.1f} SOL from {short(parent)}'})"
             f" … [~{hel.credits:,} credits]")
         try:
@@ -240,9 +254,11 @@ def lookback(days=21, hops=2, log=print, csv_path="sources.csv"):
     def name(m):
         return info[m].get("symbol") or m[:6]
 
-    log(f"\n=== Last {days:g} days ===")
+    log(f"\n=== Last {days:g} days of activity ===")
     for src in config.WATCH_SOURCES:
-        log(f"\nSOURCE {src}")
+        log(f"\nSOURCE {src}  (window from "
+            f"{time.strftime('%Y-%m-%d', time.gmtime(root_since[src]))}, last active "
+            f"{time.strftime('%Y-%m-%d', time.gmtime(last_seen[src])) if last_seen[src] else 'never'})")
         own = sorted(buys[src].items(), key=lambda kv: -kv[1])
         log("  bought itself: " + (", ".join(f"{name(m)} {s:.1f} SOL" for m, s in own[:10]) or "nothing"))
         kids = [n for n in nodes if n[1] == src and n[3] >= 1]
