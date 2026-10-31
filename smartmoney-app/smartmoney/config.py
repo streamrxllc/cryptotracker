@@ -85,18 +85,16 @@ ALERT_COOLDOWN_HOURS = _env("alert_cooldown_hours", 12, float)
 # search, Oct 21). The original high-volume "gambler" wallets were dropped.
 WATCH_WALLETS = [w.strip() for w in _env(
     "watch_wallets",
-    "DmG6ECng9cPECEbdNea5HzXZ6khp8fuuyZG227iip2pi,"
-    "Gge2CjCKcrFq5oVvZpEyEMvHV3UGDkWGcsUocEgzAgSx,"
-    "H8uQd8XpuUu5GhQegwBDskYSFjj386o1Z4dZqyneSTP,"
-    "kHfajAXALAgbBup22egPEjgP135Le4yzM7LZd6oXbtF,"
-    "bb3VYRGxmGzFWgccaWHYhgXCLGpEkxumX4S7PaHbNaT,"
-    "A1LdRHctbjDfJzK1raE9HCnid6hmtBws4JSVUYLEXnfr").split(",") if w.strip()]
-# Funding sources to watch (trace, Oct 27): wallets they fund get tracked and
-# alerted. FWznbc… sat behind STONK/Agency/SI/CLAUDIA winners, FBwXQA… behind ANSEM/BORDR.
+    # Still-active wallets from the FBwXQA wallet farm (follow, Oct 31). Both
+    # trade memecoins and fund other wallets. Everything older was dropped.
+    "3jbU2sKhQAY34pT7o8ZwtfNnRCcke2L63ZFQJhC83EDm,"
+    "ac69kKybKhfGxFkRAqgoUjw4tXVMUV2mwwENzVbnKxk").split(",") if w.strip()]
+# Funding sources to watch: wallets they fund get tracked and alerted.
 WATCH_SOURCES = [w.strip() for w in _env(
     "watch_sources",
-    "FWznbcNXWQuHTawe9RxvQ2LdCENssh12dsznf4RiouN5,"
-    "FBwXQAEbPPQ6BKWBFURUrYGRdcAqYTnRz1WijBoXgHpt").split(",") if w.strip()]
+    # The same two wallets: alert when they fund a new wallet, then track it.
+    "3jbU2sKhQAY34pT7o8ZwtfNnRCcke2L63ZFQJhC83EDm,"
+    "ac69kKybKhfGxFkRAqgoUjw4tXVMUV2mwwENzVbnKxk").split(",") if w.strip()]
 SOURCE_MIN_SOL = _env("source_min_sol", 0.5, float)        # smallest funding that counts
 SOURCE_HOPS = _env("source_hops", 2, int)                  # follow funded wallets' funding too
 SOURCE_FOLLOW_DAYS = _env("source_follow_days", 14, float) # track a funded wallet this long

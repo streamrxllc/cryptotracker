@@ -95,3 +95,20 @@ def test_follow_finds_active_frontier(monkeypatch, tmp_path):
     assert [n["addr"] for n in nodes] == [R, "A1", "B1", "C1"]          # CEX not followed
     assert [n["hop"] for n in nodes] == [0, 1, 2, 3]
     assert info["C1"]["buys_recent"] and info["B1"]["kids"] == 1
+
+
+def test_prune_and_reset(tmp_path, monkeypatch):
+    from smartmoney import tracker
+    con = setup(tmp_path, monkeypatch)
+    con.executescript(sources.SCHEMA)
+    con.execute("INSERT INTO source_wallets (address, root, depth) VALUES ('OLDSRC','OLDSRC',0)")
+    con.execute("INSERT INTO source_wallets (address, root, depth, funded_ts) VALUES ('OLDKID','OLDSRC',1,?)", (NOW,))
+    con.execute("INSERT INTO source_buys VALUES ('OLDKID','M',1,1,1)")
+    con.execute("CREATE TABLE IF NOT EXISTS alerts (mint TEXT PRIMARY KEY, sent_at INTEGER)")
+    con.execute("INSERT INTO alerts VALUES ('M', 1)")
+    con.commit()
+    assert tracker.reset_if_watch_changed(con, log=lambda *a: None)
+    assert con.execute("SELECT COUNT(*) FROM source_wallets").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM source_buys").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM alerts").fetchone()[0] == 0
+    assert not tracker.reset_if_watch_changed(con, log=lambda *a: None)   # only once

@@ -52,6 +52,21 @@ def transfers_out(tx, source, min_sol):
     return [(to, amt) for to, amt in sol_recipients(tx, source, min_sol) if to not in tok_accts]
 
 
+def prune(con):
+    """Forget sources (and what they funded) that are no longer in WATCH_SOURCES."""
+    con.executescript(SCHEMA)
+    roots = list(config.WATCH_SOURCES)
+    q = ",".join("?" * len(roots)) or "''"
+    gone = [r[0] for r in con.execute(
+        f"SELECT address FROM source_wallets WHERE root NOT IN ({q})", roots)]
+    if gone:
+        con.execute(f"DELETE FROM source_wallets WHERE root NOT IN ({q})", roots)
+        g = ",".join("?" * len(gone))
+        con.execute(f"DELETE FROM source_buys WHERE wallet IN ({g})", gone)
+        con.commit()
+    return gone
+
+
 def active(con, now=None):
     """Funded wallets currently being followed (tracked for trades)."""
     con.executescript(SCHEMA)
@@ -75,7 +90,7 @@ def _is_hub(hel, a, now, cache):
 
 def check_funding(hel, con, notify, log=print, now=None, fresh_hours=2):
     """Scan watched sources for new outgoing SOL. Returns newly found wallets."""
-    con.executescript(SCHEMA)
+    prune(con)
     now = now or int(time.time())
     for s in config.WATCH_SOURCES:
         con.execute("INSERT OR IGNORE INTO source_wallets (address, root, depth, added_at) "

@@ -128,7 +128,32 @@ def sync_watch_list(con, log=print):
     return n
 
 
+def reset_if_watch_changed(con, log=print):
+    """When the watch list or sources change, clear alerts, paper trades and
+    old sources once, so the dashboard only shows the current wallets."""
+    import hashlib
+    con.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+    key = hashlib.sha1(",".join(sorted(config.WATCH_WALLETS) + ["|"] +
+                                sorted(config.WATCH_SOURCES)).encode()).hexdigest()[:12]
+    row = con.execute("SELECT v FROM meta WHERE k='watch_key'").fetchone()
+    if row and row[0] == key:
+        return False
+    for t in ("paper_trades", "alerts", "accum_alerts"):
+        try:
+            con.execute(f"DELETE FROM {t}")
+        except Exception:
+            pass                                   # table not created yet
+    con.execute("DELETE FROM meta WHERE k='accum_seeded'")   # re-arm silently
+    con.execute("INSERT OR REPLACE INTO meta VALUES ('watch_key', ?)", (key,))
+    con.commit()
+    sources.prune(con)
+    if row:
+        log("   watch list changed: cleared old alerts, paper trades and sources")
+    return True
+
+
 def cycle(hel, con, log=print):
+    reset_if_watch_changed(con, log)
     # Apply the watch list before polling, so dropped wallets aren't polled.
     for addr in config.WATCH_WALLETS:
         if con.execute("SELECT 1 FROM wallets WHERE address=?", (addr,)).fetchone():
